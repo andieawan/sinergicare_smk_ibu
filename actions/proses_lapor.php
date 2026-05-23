@@ -1,5 +1,6 @@
 <?php
 // proses_lapor.php (VERSI HYBRID SYSTEM ENGINE)
+// PERBAIKAN PATH: Tambahkan ../ karena file dimasukkan ke dalam folder actions/
 require_once '../config/config.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -7,27 +8,28 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 if (!isset($_SESSION['user_id'])) {
+    // PERBAIKAN PATH: Kembali ke root utama
     header("Location: ../login.php");
     exit();
 }
 
 $user_id_login = $_SESSION['user_id'];
-$user_roles    = $_SESSION['user_roles'] ?? [];
+$user_roles    = $_SESSION['user_roles']; 
 $is_bk_admin   = count(array_intersect(['bk', 'admin', 'super_admin'], $user_roles)) > 0;
 
-// ====================================================================================
-// FUNGSI: Hitung Ulang Radar Status Warna Siswa
-// ====================================================================================
-function hitungUlangRadarSiswa($conn, $student_id)
-{
-    $stmt = $conn->prepare("SELECT vc.bobot_risiko FROM incidents i
-                            JOIN violation_categories vc ON i.category_id = vc.id
-                            WHERE i.student_id = ?
+// ====================================================================================\
+// FUNGSI OTOMATIS: Hitung Ulang Radar Status Warna Siswa Secara Akurat
+// ====================================================================================\
+function hitungUlangRadarSiswa($conn, $student_id) {
+    // Ambil risiko tertinggi dari kasus yang TERSISA milik siswa ini
+    $stmt = $conn->prepare("SELECT vc.bobot_risiko FROM incidents i 
+                            JOIN violation_categories vc ON i.category_id = vc.id 
+                            WHERE i.student_id = ? 
                             ORDER BY FIELD(vc.bobot_risiko, 'berat', 'sedang', 'ringan') LIMIT 1");
     $stmt->execute([$student_id]);
     $res = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    $warna_baru = 'hijau';
+    $warna_baru = 'hijau'; // Jika tidak ada sisa kasus, otomatis kembali putih/hijau
     $skor_level = 'teguran';
 
     if ($res) {
@@ -40,120 +42,107 @@ function hitungUlangRadarSiswa($conn, $student_id)
         }
     }
 
-    $conn->prepare("UPDATE students SET status_warna = ?, level_eskalasi = ? WHERE id = ?")
-         ->execute([$warna_baru, $skor_level, $student_id]);
+    // Update status fisik siswa di tabel students
+    $stmt_up = $conn->prepare("UPDATE students SET status_warna = ?, level_eskalasi = ? WHERE id = ?");
+    $stmt_up->execute([$warna_baru, $skor_level, $student_id]);
 }
 
-// ====================================================================================
-// PROSES 1: PENAMBAHAN INSIDEN BARU (POST)
-// ====================================================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // PERBAIKAN: form di index.php tidak mengirim form_aksi, hanya POST biasa → default tambah
-    $form_aksi   = $_POST['form_aksi'] ?? 'tambah';
-    $student_id  = $_POST['student_id'] ?? '';
+// ====================================================================================\
+// PROSES 1: PENAMBAHAN JURNAL BARU (CREATE)
+// ====================================================================================\
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_aksi']) && $_POST['form_aksi'] === 'tambah') {
+    $student_id   = $_POST['student_id'] ?? '';
+    $category_id  = $_POST['category_id'] ?? '';
+    $catatan      = trim($_POST['catatan'] ?? '');
+
+    if (empty($student_id) || empty($category_id)) {
+        die("Data input tidak lengkap.");
+    }
+
+    try {
+        $stmt = $conn->prepare("INSERT INTO incidents (student_id, category_id, user_id, catatan, created_at) VALUES (?, ?, ?, ?, NOW())");
+        $stmt->execute([$student_id, $category_id, $user_id_login, $catatan]);
+
+        // Jalankan hitung ulang radar otomatis untuk siswa ini
+        hitungUlangRadarSiswa($conn, $student_id);
+
+        $_SESSION['notif'] = ['type' => 'success', 'message' => 'Laporan insiden berhasil dicatat dan masuk radar pemantauan!'];
+        // PERBAIKAN PATH: Kembali ke root utama
+        header("Location: ../index.php");
+        exit();
+    } catch (PDOException $e) {
+        die("Error: " . $e->getMessage());
+    }
+}
+
+// ====================================================================================\
+// PROSES 2: EDIT DATA JURNAL (UPDATE)
+// ====================================================================================\
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_aksi']) && $_POST['form_aksi'] === 'edit') {
+    $id          = $_POST['id'] ?? '';
     $category_id = $_POST['category_id'] ?? '';
     $catatan     = trim($_POST['catatan'] ?? '');
-
-    if ($form_aksi === 'tambah') {
-        if (empty($student_id) || empty($category_id) || empty($catatan)) {
-            $_SESSION['notif'] = ['type' => 'error', 'message' => '⚠️ Data jurnal tidak lengkap.'];
-            header("Location: ../index.php");
-            exit();
-        }
-
-        try {
-            $conn->prepare("INSERT INTO incidents (student_id, category_id, user_id, catatan, created_at)
-                            VALUES (?, ?, ?, ?, NOW())")
-                 ->execute([$student_id, $category_id, $user_id_login, $catatan]);
-
-            hitungUlangRadarSiswa($conn, $student_id);
-
-            $_SESSION['notif'] = ['type' => 'success', 'message' => '✅ Laporan insiden berhasil dicatat dan masuk radar pemantauan!'];
-        } catch (PDOException $e) {
-            $_SESSION['notif'] = ['type' => 'error', 'message' => '❌ Error: ' . $e->getMessage()];
-        }
-
-        header("Location: ../index.php");
-        exit();
-    }
-
-    // Edit insiden
-    if ($form_aksi === 'edit') {
-        $id = $_POST['id'] ?? '';
-
-        try {
-            $stmt_check = $conn->prepare("SELECT * FROM incidents WHERE id = ?");
-            $stmt_check->execute([$id]);
-            $incident = $stmt_check->fetch(PDO::FETCH_ASSOC);
-
-            if (!$incident) {
-                $_SESSION['notif'] = ['type' => 'error', 'message' => '⚠️ Data tidak ditemukan.'];
-                header("Location: ../index.php");
-                exit();
-            }
-
-            $is_owner    = ($incident['user_id'] == $user_id_login);
-            $within_time = (time() - strtotime($incident['created_at']) <= 1800);
-
-            if (!$is_bk_admin && !($is_owner && $within_time)) {
-                $_SESSION['notif'] = ['type' => 'error', 'message' => '⛔ Batas waktu 30 menit modifikasi telah habis.'];
-                header("Location: ../index.php");
-                exit();
-            }
-
-            $conn->prepare("UPDATE incidents SET category_id = ?, catatan = ? WHERE id = ?")
-                 ->execute([$category_id, $catatan, $id]);
-
-            hitungUlangRadarSiswa($conn, $incident['student_id']);
-
-            $_SESSION['notif'] = ['type' => 'success', 'message' => '✅ Catatan jurnal berhasil diperbarui!'];
-        } catch (PDOException $e) {
-            $_SESSION['notif'] = ['type' => 'error', 'message' => '❌ Error: ' . $e->getMessage()];
-        }
-
-        header("Location: ../index.php");
-        exit();
-    }
-}
-
-// ====================================================================================
-// PROSES 2: HAPUS INSIDEN (GET)
-// ====================================================================================
-if (isset($_GET['aksi']) && $_GET['aksi'] === 'hapus') {
-    $id = (int)($_GET['id'] ?? 0);
 
     try {
         $stmt_check = $conn->prepare("SELECT * FROM incidents WHERE id = ?");
         $stmt_check->execute([$id]);
         $incident = $stmt_check->fetch(PDO::FETCH_ASSOC);
 
-        if (!$incident) {
-            $_SESSION['notif'] = ['type' => 'error', 'message' => '⚠️ Data tidak ditemukan.'];
-            header("Location: ../index.php");
-            exit();
-        }
+        if (!$incident) { die("Data tidak ditemukan."); }
 
         $is_owner    = ($incident['user_id'] == $user_id_login);
         $within_time = (time() - strtotime($incident['created_at']) <= 1800);
 
         if (!$is_bk_admin && !($is_owner && $within_time)) {
-            $_SESSION['notif'] = ['type' => 'error', 'message' => '⛔ Akses hapus ditolak. Hubungi BK untuk penghapusan.'];
-            header("Location: ../index.php");
-            exit();
+            die("Akses edit ditolak. Batas waktu 30 urung modifikasi telah habis.");
         }
 
-        $conn->prepare("DELETE FROM incidents WHERE id = ?")->execute([$id]);
+        $stmt_update = $conn->prepare("UPDATE incidents SET category_id = ?, catatan = ? WHERE id = ?");
+        $stmt_update->execute([$category_id, $catatan, $id]);
+
+        // Sinkronisasi ulang radar warna karena kategori mungkin berubah risiko
         hitungUlangRadarSiswa($conn, $incident['student_id']);
 
-        $_SESSION['notif'] = ['type' => 'success', 'message' => '🗑️ Laporan insiden berhasil dihapus.'];
+        $_SESSION['notif'] = ['type' => 'success', 'message' => 'Catatan jurnal berhasil diperbarui!'];
+        // PERBAIKAN PATH: Kembali ke root utama
+        header("Location: ../index.php");
+        exit();
     } catch (PDOException $e) {
-        $_SESSION['notif'] = ['type' => 'error', 'message' => '❌ Error: ' . $e->getMessage()];
+        die("Error: " . $e->getMessage());
     }
-
-    header("Location: ../index.php");
-    exit();
 }
 
-// Fallback
-header("Location: ../index.php");
-exit();
+// ====================================================================================\
+// PROSES 3: PENGHAPUSAN DATA JURNAL (DELETE)
+// ====================================================================================\
+if (isset($_GET['aksi']) && $_GET['aksi'] === 'hapus') {
+    $id = $_GET['id'] ?? '';
+
+    try {
+        $stmt_check = $conn->prepare("SELECT * FROM incidents WHERE id = ?");
+        $stmt_check->execute([$id]);
+        $incident = $stmt_check->fetch(PDO::FETCH_ASSOC);
+
+        if (!$incident) { die("Data tidak ditemukan."); }
+
+        $is_owner    = ($incident['user_id'] == $user_id_login);
+        $within_time = (time() - strtotime($incident['created_at']) <= 1800);
+
+        if (!$is_bk_admin && !($is_owner && $within_time)) {
+            die("Akses hapus ditolak.");
+        }
+
+        $stmt_delete = $conn->prepare("DELETE FROM incidents WHERE id = ?");
+        $stmt_delete->execute([$id]);
+
+        hitungUlangRadarSiswa($conn, $incident['student_id']);
+
+        $_SESSION['notif'] = ['type' => 'success', 'message' => 'Laporan insiden berhasil dihapus dari sistem.'];
+        // PERBAIKAN PATH: Kembali ke root utama
+        header("Location: ../index.php");
+        exit();
+    } catch (PDOException $e) {
+        die("Error: " . $e->getMessage());
+    }
+}
+?>
