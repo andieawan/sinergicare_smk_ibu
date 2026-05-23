@@ -164,7 +164,7 @@ if (!empty($_SESSION['notif'])) {
                     <p><span class="info-label">🆔 ID User:</span> <strong><?php echo htmlspecialchars($user_id); ?></strong></p>
                 </div>
 
-                <form method="POST" action="actions/proses_profile_edit.php">
+                <form method="POST" action="actions/proses_profile_edit.php" id="editProfileForm">
                     <!-- Edit Nama -->
                     <div class="form-group">
                         <label for="nama">👤 Nama Lengkap</label>
@@ -214,5 +214,24 @@ if (!empty($_SESSION['notif'])) {
     </div>
 
     <script src="assets/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Validasi password baru dan konfirmasi saat user mengetik
+        document.getElementById('editProfileForm').addEventListener('submit', function(e) {
+            const passwordBaru = document.getElementById('password_baru').value;
+            const passwordConfirm = document.getElementById('password_confirm').value;
+            
+            if (passwordBaru && passwordBaru !== passwordConfirm) {
+                e.preventDefault();
+                alert('❌ Password baru dan konfirmasi password tidak cocok!');
+                return false;
+            }
+            
+            if (passwordBaru && passwordBaru.length < 6) {
+                e.preventDefault();
+                alert('❌ Password baru minimal 6 karakter!');
+                return false;
+            }
+        });
+    </script>
 </body>
 </html>
