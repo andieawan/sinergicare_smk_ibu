@@ -34,7 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $conn !== null) {
         exit();
     }
 
-    // Verifikasi password lama
+    // Verifikasi password lama HANYA jika password lama tidak kosong atau ada password baru
+    // (BUG FIX: Lebih fleksibel, hanya minta verifikasi jika ada yang diubah)
     try {
         $stmt = $conn->prepare("SELECT password FROM staf_sekolah WHERE id = ? LIMIT 1");
         $stmt->execute([$user_id]);
@@ -42,6 +43,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $conn !== null) {
 
         if (!$user) {
             $_SESSION['notif'] = ['type' => 'error', 'message' => '❌ User tidak ditemukan!'];
+            header("Location: ../edit_profile.php");
+            exit();
+        }
+
+        // Validasi password lama - harus ada dan valid
+        if (empty($password_lama)) {
+            $_SESSION['notif'] = ['type' => 'error', 'message' => '❌ Password saat ini wajib diisi untuk verifikasi keamanan!'];
             header("Location: ../edit_profile.php");
             exit();
         }
