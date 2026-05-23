@@ -36,7 +36,7 @@ if (isset($_SESSION['user_id'])) {
 
             <div>
                 <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Password</label>
-                <input type="password" name="password" class="w-full p-2.5 text-sm border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="••••••••" required>
+                <input type="password" name="password" class="w-full p-2.5 text-sm border rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="•••••••" required>
             </div>
 
             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition shadow-sm">
