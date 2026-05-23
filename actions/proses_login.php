@@ -25,9 +25,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $conn !== null) {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user) {
-            // Pengecekan password (Plain text sesuai basis data awal v1 Anda)
-            if ($password === $user['password']) {
-                
+            // Pengecekan password - Support untuk hashed dan plaintext password (legacy)
+            $password_valid = false;
+            
+            if (password_verify($password, $user['password'])) {
+                // Password di-hash dengan password_hash()
+                $password_valid = true;
+            } elseif ($password === $user['password']) {
+                // Password plaintext (legacy support untuk existing password)
+                $password_valid = true;
+            }
+            
+            if ($password_valid) {
                 // --- INTI ADAPTASI MULTI-ROLE SINERGICARE v2 ---
                 $_SESSION['user_id']   = $user['id'];
                 $_SESSION['user_nama'] = $user['nama'];

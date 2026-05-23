@@ -211,12 +211,12 @@ if ($conn !== null) {
                     <?php endif; ?>
                 </div>
 
-                <?php if (in_array('admin', $user_roles) || in_array('super_admin', $user_roles)): ?>
+                <?php if (in_array('admin', $user_roles)): ?>
                 <div class="space-y-1">
                     <span class="text-[9px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase px-3 block mb-1">Pengaturan</span>
-                    <button id="btn_nav_section_master_data" onclick="switchMenu('section_master_data')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left target-menu-btn">
-                        ⚙️ Master Data Panel
-                    </button>
+                    <a href="admin_panel.php" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left">
+                        🔧 Admin Panel
+                    </a>
                 </div>
                 <?php endif; ?>
             </nav>
@@ -230,11 +230,12 @@ if ($conn !== null) {
                 </p>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
+                <a href="edit_profile.php" class="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center hover:scale-105 transition" title="Edit Profile">⚙️</a>
                 <button onclick="toggleDarkMode()" class="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center hover:scale-105 transition">
                     <span id="theme_icon_sun" class="hidden dark:block text-[11px]">☀️</span>
                     <span id="theme_icon_moon" class="block dark:hidden text-[11px]">🌙</span>
                 </button>
-                <a href="logout.php" class="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center hover:bg-rose-50 text-slate-500 transition">💡</a>
+                <a href="logout.php" class="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center hover:bg-rose-50 text-slate-500 transition" title="Logout">💡</a>
             </div>
         </div>
     </aside>
