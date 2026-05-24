@@ -5,66 +5,86 @@
 // ARSITEKTUR v3.0.0: Jalur konfigurasi database dialihkan ke folder config/
 require_once 'config/config.php';
 
+// Pastikan session sudah berjalan
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 // Proteksi Sesi Login
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
-$user_id_login = $_SESSION['user_id'];
-$user_nama     = $_SESSION['user_nama'];
-$user_roles    = $_SESSION['user_roles']; 
+$user_id_login = $_SESSION['user_id'] ?? 0;
+$user_nama     = $_SESSION['user_nama'] ?? 'Guest';
+$user_roles    = $_SESSION['user_roles'] ?? [];
+
+// Pastikan user_roles selalu berwujud array agar array_intersect tidak error
+if (!is_array($user_roles)) {
+    $user_roles = [$user_roles];
+}
 
 // --- [QUERY A: STATISTIK WARNA RADAR] ---
 $count_hijau = 0; $count_kuning = 0; $count_merah = 0;
-if ($conn !== null) {
+if (isset($conn) && $conn !== null) {
     $q_stats = $conn->query("SELECT status_warna, COUNT(*) as jumlah FROM students GROUP BY status_warna");
-    while($row = $q_stats->fetch(PDO::FETCH_ASSOC)) {
-        if($row['status_warna'] == 'hijau') $count_hijau = $row['jumlah'];
-        if($row['status_warna'] == 'kuning') $count_kuning = $row['jumlah'];
-        if($row['status_warna'] == 'merah') $count_merah = $row['jumlah'];
+    if ($q_stats) {
+        while($row = $q_stats->fetch(PDO::FETCH_ASSOC)) {
+            if($row['status_warna'] == 'hijau') $count_hijau = $row['jumlah'];
+            if($row['status_warna'] == 'kuning') $count_kuning = $row['jumlah'];
+            if($row['status_warna'] == 'merah') $count_merah = $row['jumlah'];
+        }
     }
 }
 
 // --- [QUERY B: AMBIL DATA KELAS GLOBAL] ---
 $daftar_kelas_global = [];
-if ($conn !== null) {
+if (isset($conn) && $conn !== null) {
     $q_global_cls = $conn->query("SELECT * FROM classes ORDER BY nama_kelas ASC");
-    while($g_cls = $q_global_cls->fetch(PDO::FETCH_ASSOC)) {
-        $daftar_kelas_global[] = $g_cls;
+    if ($q_global_cls) {
+        while($g_cls = $q_global_cls->fetch(PDO::FETCH_ASSOC)) {
+            $daftar_kelas_global[] = $g_cls;
+        }
     }
 }
 
 // --- [QUERY C: AMBIL DATA GURU GLOBAL] ---
 $daftar_guru_global = [];
-if ($conn !== null) {
+if (isset($conn) && $conn !== null) {
     $q_global_gru = $conn->query("SELECT * FROM staf_sekolah ORDER BY nama ASC");
-    while($g_gru = $q_global_gru->fetch(PDO::FETCH_ASSOC)) {
-        $daftar_guru_global[] = $g_gru;
+    if ($q_global_gru) {
+        while($g_gru = $q_global_gru->fetch(PDO::FETCH_ASSOC)) {
+            $daftar_guru_global[] = $g_gru;
+        }
     }
 }
 
 // --- [QUERY D: AMBIL DATA BUKU ATURAN GLOBAL] ---
 $daftar_kategori_global = [];
-if ($conn !== null) {
+if (isset($conn) && $conn !== null) {
     $q_global_kat = $conn->query("SELECT * FROM violation_categories ORDER BY nama_kejadian ASC");
-    while($g_kat = $q_global_kat->fetch(PDO::FETCH_ASSOC)) {
-        $daftar_kategori_global[] = $g_kat;
+    if ($q_global_kat) {
+        while($g_kat = $q_global_kat->fetch(PDO::FETCH_ASSOC)) {
+            $daftar_kategori_global[] = $g_kat;
+        }
     }
 }
 
 // --- [QUERY E: AMBIL DAFTAR SISWA UNTUK ADMINISTRASI BK] ---
 $daftar_siswa_global = [];
-if ($conn !== null) {
+if (isset($conn) && $conn !== null) {
     $q_global_sis = $conn->query("SELECT s.*, c.nama_kelas FROM students s LEFT JOIN classes c ON s.class_id = c.id ORDER BY s.nama ASC");
-    while($g_sis = $q_global_sis->fetch(PDO::FETCH_ASSOC)) {
-        $daftar_siswa_global[] = $g_sis;
+    if ($q_global_sis) {
+        while($g_sis = $q_global_sis->fetch(PDO::FETCH_ASSOC)) {
+            $daftar_siswa_global[] = $g_sis;
+        }
     }
 }
 
 // --- [PERBAIKAN QUERY F v3.0.0: PENYARINGAN SEGMENTASI LOG KASUS BERDASARKAN ROLE] ---
 $log_jurnal_terkini = [];
-if ($conn !== null) {
+if (isset($conn) && $conn !== null) {
     try {
         $is_bk_admin = count(array_intersect(['bk', 'admin', 'super_admin'], $user_roles)) > 0;
         
@@ -98,27 +118,31 @@ if ($conn !== null) {
 
 // --- [QUERY G: ANALITIK EXCLUSIVE WAKA - PETA KERAWANAN KELAS] ---
 $peta_kerawanan_kelas = [];
-if ($conn !== null) {
+if (isset($conn) && $conn !== null) {
     $q_rawan = $conn->query("SELECT c.nama_kelas, COUNT(i.id) as total_cases 
                              FROM incidents i
                              JOIN students s ON i.student_id = s.id
                              JOIN classes c ON s.class_id = c.id
                              GROUP BY c.id ORDER BY total_cases DESC LIMIT 3");
-    while($r_rawan = $q_rawan->fetch(PDO::FETCH_ASSOC)) {
-        $peta_kerawanan_kelas[] = $r_rawan;
+    if ($q_rawan) {
+        while($r_rawan = $q_rawan->fetch(PDO::FETCH_ASSOC)) {
+            $peta_kerawanan_kelas[] = $r_rawan;
+        }
     }
 }
 
 // --- [QUERY H: TREN PELANGGARAN UTAMA BULAN INI] ---
 $tren_pelanggaran = [];
-if ($conn !== null) {
+if (isset($conn) && $conn !== null) {
     $q_tren = $conn->query("SELECT vc.nama_kejadian, COUNT(i.id) as jumlah 
                             FROM incidents i
                             JOIN violation_categories vc ON i.category_id = vc.id
                             WHERE MONTH(i.created_at) = MONTH(CURRENT_DATE())
                             GROUP BY vc.id ORDER BY jumlah DESC LIMIT 3");
-    while($r_tren = $q_tren->fetch(PDO::FETCH_ASSOC)) {
-        $tren_pelanggaran[] = $r_tren;
+    if ($q_tren) {
+        while($r_tren = $q_tren->fetch(PDO::FETCH_ASSOC)) {
+            $tren_pelanggaran[] = $r_tren;
+        }
     }
 }
 ?>
@@ -180,38 +204,38 @@ if ($conn !== null) {
                         🚨 Jurnal Insiden Harian
                     </button>
 
-                    <?php if (in_array('guru', $user_roles) || in_array('super_admin', $user_roles)): ?>
+                    <?php if (count(array_intersect(['guru', 'admin', 'super_admin'], $user_roles)) > 0): ?>
                     <button id="btn_nav_section_mandat" onclick="switchMenu('section_mandat')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left target-menu-btn">
                         📋 Pengawasan Lapangan
                     </button>
                     <?php endif; ?>
 
-                    <?php if (count(array_intersect(['bk', 'super_admin', 'kepala_sekolah', 'waka_kesiswaan', 'kepala_jurusan', 'yayasan'], $user_roles)) > 0): ?>
+                    <?php if (count(array_intersect(['bk', 'admin', 'super_admin', 'kepala_sekolah', 'waka_kesiswaan', 'kepala_jurusan', 'yayasan'], $user_roles)) > 0): ?>
                     <button id="btn_nav_section_radar_bk" onclick="switchMenu('section_radar_bk')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left target-menu-btn">
                         🎯 Radar Urgent BK
                     </button>
                     <?php endif; ?>
 
-                    <?php if (in_array('bk', $user_roles) || in_array('super_admin', $user_roles)): ?>
+                    <?php if (count(array_intersect(['bk', 'admin', 'super_admin'], $user_roles)) > 0): ?>
                     <button id="btn_nav_section_cetak_bk" onclick="switchMenu('section_cetak_bk')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left target-menu-btn">
                         🖨️ Pusat Cetak Surat BK
                     </button>
                     <?php endif; ?>
 
-                    <?php if (in_array('kepala_jurusan', $user_roles) || in_array('super_admin', $user_roles)): ?>
+                    <?php if (count(array_intersect(['kepala_jurusan', 'admin', 'super_admin'], $user_roles)) > 0): ?>
                     <button id="btn_nav_section_kajur" onclick="switchMenu('section_kajur')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left target-menu-btn">
                         ⚡ Kelayakan PKL Jurusan
                     </button>
                     <?php endif; ?>
 
-                    <?php if (in_array('waka_kesiswaan', $user_roles) || in_array('super_admin', $user_roles)): ?>
+                    <?php if (count(array_intersect(['waka_kesiswaan', 'admin', 'super_admin'], $user_roles)) > 0): ?>
                     <button id="btn_nav_section_waka" onclick="switchMenu('section_waka')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left target-menu-btn">
                         🛡️ Eskalasi Tindakan Waka
                     </button>
                     <?php endif; ?>
                 </div>
 
-                <?php if (in_array('admin', $user_roles)): ?>
+                <?php if (count(array_intersect(['admin', 'super_admin'], $user_roles)) > 0): ?>
                 <div class="space-y-1">
                     <span class="text-[9px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase px-3 block mb-1">Pengaturan</span>
                     <a href="admin_panel.php" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left">
@@ -224,9 +248,9 @@ if ($conn !== null) {
 
         <div class="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
             <div class="truncate max-w-[120px]">
-                <p class="font-bold text-slate-900 dark:text-white truncate"><?php echo htmlspecialchars($user_nama, ENT_QUOTES); ?></p>
+                <p class="font-bold text-slate-900 dark:text-white truncate"><?php echo htmlspecialchars($user_nama, ENT_QUOTES, 'UTF-8'); ?></p>
                 <p class="text-[9px] text-indigo-600 dark:text-indigo-400 font-extrabold uppercase tracking-wider">
-                    <?php echo isset($user_roles[0]) ? htmlspecialchars(str_replace('_', ' ', $user_roles[0]), ENT_QUOTES) : 'GUEST'; ?>
+                    <?php echo isset($user_roles[0]) ? htmlspecialchars(str_replace('_', ' ', $user_roles[0]), ENT_QUOTES, 'UTF-8') : 'GUEST'; ?>
                 </p>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
@@ -247,7 +271,7 @@ if ($conn !== null) {
                 <div class="relative hidden sm:block">
                     <input type="text" id="global_top_search" oninput="aksiCariNamaGlobal()" class="w-48 lg:w-60 bg-slate-100/80 dark:bg-slate-800 text-xs px-4 py-2 rounded-full outline-none dark:text-white" placeholder="Cari siswa cepat...">
                 </div>
-                <?php if (in_array('guru', $user_roles) || in_array('super_admin', $user_roles)): ?>
+                <?php if (count(array_intersect(['guru', 'admin', 'super_admin'], $user_roles)) > 0): ?>
                 <button onclick="switchMenu('section_jurnal')" class="bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold px-4 py-2 rounded-full transition hover:opacity-90">
                     + Input Kasus
                 </button>
@@ -256,8 +280,8 @@ if ($conn !== null) {
         </div>
 
         <?php if (isset($_SESSION['notif'])): ?>
-        <div class="p-4 rounded-2xl border flex items-center justify-between shrink-0 <?php echo $_SESSION['notif']['type'] === 'success' ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-100 dark:border-emerald-900 text-emerald-900' : 'bg-rose-50 text-rose-900'; ?>">
-            <p class="text-xs font-semibold"><?php echo htmlspecialchars($_SESSION['notif']['message'], ENT_QUOTES); ?></p>
+        <div class="p-4 rounded-2xl border flex items-center justify-between shrink-0 <?php echo ($_SESSION['notif']['type'] ?? '') === 'success' ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-100 dark:border-emerald-900 text-emerald-900' : 'bg-rose-50 text-rose-900'; ?>">
+            <p class="text-xs font-semibold"><?php echo htmlspecialchars($_SESSION['notif']['message'] ?? '', ENT_QUOTES, 'UTF-8'); ?></p>
             <button onclick="this.parentElement.remove()" class="text-sm font-bold opacity-40 hover:opacity-100">&times;</button>
         </div>
         <?php unset($_SESSION['notif']); ?>
@@ -299,28 +323,29 @@ if ($conn !== null) {
                     <h3 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4">🚨 Tindakan Segera BK</h3>
                     <div class="space-y-2 flex-1 overflow-y-auto max-h-[340px] pr-1">
                         <?php
-                        if ($conn !== null) {
+                        if (isset($conn) && $conn !== null) {
                             $q_siswa = $conn->query("SELECT s.*, c.nama_kelas FROM students s LEFT JOIN classes c ON s.class_id = c.id WHERE s.status_warna IN ('kuning', 'merah')");
-                            if($q_siswa->rowCount() == 0) { 
-                                echo '<div class="text-center py-12 text-slate-400 italic text-xs">Radar bersih! Belum ada kasus kritis terdeteksi.</div>';
-                            } else { 
-                                while($siswa = $q_siswa->fetch(PDO::FETCH_ASSOC)) { 
-                                    ?>
+                            if ($q_siswa) {
+                                if($q_siswa->rowCount() == 0) { 
+                                    echo '<div class="text-center py-12 text-slate-400 italic text-xs">Radar bersih! Belum ada kasus kritis terdeteksi.</div>';
+                                } else { 
+                                    while($siswa = $q_siswa->fetch(PDO::FETCH_ASSOC)) { 
+                                        ?>
                         <div class="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border flex justify-between items-center gap-2">
                             <div class="truncate">
-                                <h4 class="font-bold text-xs text-slate-900 dark:text-white truncate"><?php echo htmlspecialchars($siswa['nama'], ENT_QUOTES); ?></h4>
-                                <p class="text-[10px] text-slate-400 font-semibold mt-0.5"><?php echo htmlspecialchars($siswa['nama_kelas'] ?? '-', ENT_QUOTES); ?></p>
+                                <h4 class="font-bold text-xs text-slate-900 dark:text-white truncate"><?php echo htmlspecialchars($siswa['nama'] ?? 'Unknown', ENT_QUOTES, 'UTF-8'); ?></h4>
+                                <p class="text-[10px] text-slate-400 font-semibold mt-0.5"><?php echo htmlspecialchars($siswa['nama_kelas'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></p>
                             </div>
-                            <?php if (count(array_intersect(['bk', 'super_admin'], $user_roles)) > 0): ?>
-                            <button onclick="openModalBK('<?php echo $siswa['id']; ?>', '<?php echo htmlspecialchars(addslashes($siswa['nama']), ENT_QUOTES); ?>')" class="bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-bold py-1.5 px-3 rounded-full shrink-0 transition hover:opacity-80">Intervensi</button>
-                            <?php // Perubahan di v2.5.0: Indikator Peringatan SP
-                            elseif ((int)$siswa['status_sp'] > 0): ?>
-                            <span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase animate-pulse">SP <?php echo $siswa['status_sp']; ?></span>
+                            <?php if (count(array_intersect(['bk', 'admin', 'super_admin'], $user_roles)) > 0): ?>
+                            <button onclick="openModalBK('<?php echo htmlspecialchars($siswa['id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars(addslashes($siswa['nama'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>')" class="bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-bold py-1.5 px-3 rounded-full shrink-0 transition hover:opacity-80">Intervensi</button>
+                            <?php elseif ((int)($siswa['status_sp'] ?? 0) > 0): ?>
+                            <span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase animate-pulse">SP <?php echo (int)$siswa['status_sp']; ?></span>
                             <?php else: ?>
                             <span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 uppercase">Dipantau</span>
                             <?php endif; ?>
                         </div>
                         <?php 
+                                    }
                                 }
                             }
                         }
@@ -330,7 +355,7 @@ if ($conn !== null) {
             </div>
 
             <div id="section_jurnal" class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-4">
-                <?php if (count(array_intersect(['guru', 'super_admin'], $user_roles)) > 0): ?>
+                <?php if (count(array_intersect(['guru', 'admin', 'super_admin'], $user_roles)) > 0): ?>
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border dark:border-slate-700">
                     <input type="text" id="input_cari_nama" oninput="aksiCariNama()" class="w-full sm:w-64 px-3 py-1.5 text-xs border rounded-xl bg-white dark:bg-slate-900 outline-none dark:text-white" placeholder="Ketik Nama / NISN...">
                     <div class="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -399,24 +424,25 @@ if ($conn !== null) {
                                     ?>
                                 <tr class="hover:bg-slate-100/50 dark:hover:bg-slate-900/40 transition">
                                     <td class="px-4 py-2.5 font-bold text-slate-900 dark:text-white">
-                                        <?php echo htmlspecialchars($log['nama_siswa'], ENT_QUOTES); ?>
-                                        <span class="block text-[9px] text-slate-400 font-normal"><?php echo htmlspecialchars($log['nama_kelas'] ?? '-', ENT_QUOTES); ?></span>
+                                        <?php echo htmlspecialchars($log['nama_siswa'] ?? 'Unknown', ENT_QUOTES, 'UTF-8'); ?>
+                                        <span class="block text-[9px] text-slate-400 font-normal"><?php echo htmlspecialchars($log['nama_kelas'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></span>
                                     </td>
                                     <td class="px-4 py-2.5 font-semibold text-indigo-600 dark:text-indigo-400">
-                                        <?php echo htmlspecialchars($log['nama_kejadian'], ENT_QUOTES); ?></td>
+                                        <?php echo htmlspecialchars($log['nama_kejadian'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></td>
                                     <td class="px-4 py-2.5 italic text-slate-500 dark:text-slate-400">
-                                        "<?php echo htmlspecialchars($log['catatan'], ENT_QUOTES); ?>"</td>
+                                        "<?php echo htmlspecialchars($log['catatan'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"</td>
                                     <td class="px-4 py-2.5 text-center">
                                         <?php 
-                                        $badge = $log['bobot_risiko'] === 'berat' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border-rose-100 dark:border-rose-900' : ($log['bobot_risiko'] === 'sedang' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border-amber-100 dark:border-amber-900' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900');
+                                        $bobot = $log['bobot_risiko'] ?? 'ringan';
+                                        $badge = $bobot === 'berat' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border-rose-100 dark:border-rose-900' : ($bobot === 'sedang' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border-amber-100 dark:border-amber-900' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900');
                                         ?>
-                                        <span class="px-2 py-0.5 rounded-md text-[9px] font-bold border uppercase <?php echo $badge; ?>"><?php echo htmlspecialchars($log['bobot_risiko'], ENT_QUOTES); ?></span>
+                                        <span class="px-2 py-0.5 rounded-md text-[9px] font-bold border uppercase <?php echo $badge; ?>"><?php echo htmlspecialchars($bobot, ENT_QUOTES, 'UTF-8'); ?></span>
                                     </td>
                                     <td class="px-4 py-2.5 text-center font-bold">
                                         <?php if($boleh_koreksi): ?>
                                         <div class="flex items-center justify-center gap-2 text-[10px]">
-                                            <button type="button" onclick="bukaModalEditJurnal('<?php echo $log['id']; ?>', '<?php echo $log['category_id']; ?>', '<?php echo htmlspecialchars(addslashes($log['catatan']), ENT_QUOTES); ?>')" class="text-indigo-600 dark:text-indigo-400 hover:underline">✏️ Edit</button>
-                                            <a href="actions/proses_lapor.php?aksi=hapus&id=<?php echo $log['id']; ?>" onclick="return confirm('Hapus log kasus ini? Status warna radar murid akan dikalkulasi ulang.')" class="text-rose-600 dark:text-rose-400 hover:underline">🗑️ Hapus</a>
+                                            <button type="button" onclick="bukaModalEditJurnal('<?php echo htmlspecialchars($log['id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($log['category_id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars(addslashes($log['catatan'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>')" class="text-indigo-600 dark:text-indigo-400 hover:underline">✏️ Edit</button>
+                                            <a href="actions/proses_lapor.php?aksi=hapus&id=<?php echo urlencode($log['id'] ?? ''); ?>" onclick="return confirm('Hapus log kasus ini? Status warna radar murid akan dikalkulasi ulang.')" class="text-rose-600 dark:text-rose-400 hover:underline">🗑️ Hapus</a>
                                         </div>
                                         <?php else: ?>
                                         <span class="text-slate-400 text-[9px] italic font-normal">🔒 Terkunci</span>
@@ -431,26 +457,27 @@ if ($conn !== null) {
                 </div>
             </div>
 
-            <?php if (count(array_intersect(['guru', 'super_admin'], $user_roles)) > 0): ?>
+            <?php if (count(array_intersect(['guru', 'super_admin', 'admin'], $user_roles)) > 0): ?>
             <div id="section_mandat" class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-3">
                 <?php
-                if ($conn !== null) {
+                if (isset($conn) && $conn !== null) {
                     $stmt_tugas_saya = $conn->prepare("SELECT c.*, s.nama AS nama_siswa, cl.nama_kelas FROM consequences c JOIN students s ON c.student_id = s.id LEFT JOIN classes cl ON s.class_id = cl.id WHERE c.penanggung_jawab = :user_id AND c.status_tugas = 'pending'");
-                    $stmt_tugas_saya->execute(['user_id' => $user_id_login]);
-                    if ($stmt_tugas_saya->rowCount() == 0) {
-                        echo '<p class="text-xs text-slate-400 dark:text-slate-500 italic py-10 text-center">Tidak ada agenda pemantauan lapangan untuk Anda.</p>';
-                    } else {
-                        while($tugas = $stmt_tugas_saya->fetch(PDO::FETCH_ASSOC)) {
-                            ?>
+                    if ($stmt_tugas_saya && $stmt_tugas_saya->execute(['user_id' => $user_id_login])) {
+                        if ($stmt_tugas_saya->rowCount() == 0) {
+                            echo '<p class="text-xs text-slate-400 dark:text-slate-500 italic py-10 text-center">Tidak ada agenda pemantauan lapangan untuk Anda.</p>';
+                        } else {
+                            while($tugas = $stmt_tugas_saya->fetch(PDO::FETCH_ASSOC)) {
+                                ?>
                 <div class="p-4 bg-slate-50 dark:bg-slate-800 border rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div>
                         <h4 class="font-bold text-xs text-slate-900 dark:text-white">
-                            <?php echo htmlspecialchars($tugas['nama_siswa'], ENT_QUOTES); ?> <span class="text-slate-400 font-medium">(<?php echo htmlspecialchars($tugas['nama_kelas'] ?? '-', ENT_QUOTES); ?>)</span></h4>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">🎯 <span class="font-semibold text-slate-800 dark:text-slate-200">Tugas Kedisiplinan:</span> <?php echo htmlspecialchars($tugas['deskripsi_tugas'], ENT_QUOTES); ?></p>
+                            <?php echo htmlspecialchars($tugas['nama_siswa'] ?? 'Unknown', ENT_QUOTES, 'UTF-8'); ?> <span class="text-slate-400 font-medium">(<?php echo htmlspecialchars($tugas['nama_kelas'] ?? '-', ENT_QUOTES, 'UTF-8'); ?>)</span></h4>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">🎯 <span class="font-semibold text-slate-800 dark:text-slate-200">Tugas Kedisiplinan:</span> <?php echo htmlspecialchars($tugas['deskripsi_tugas'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></p>
                     </div>
-                    <a href="actions/proses_selesai_tugas.php?id=<?php echo $tugas['id']; ?>&student_id=<?php echo $tugas['student_id']; ?>" class="bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold py-2 px-4 rounded-xl text-center w-full sm:w-auto transition">Selesai</a>
+                    <a href="actions/proses_selesai_tugas.php?id=<?php echo urlencode($tugas['id'] ?? ''); ?>&student_id=<?php echo urlencode($tugas['student_id'] ?? ''); ?>" class="bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold py-2 px-4 rounded-xl text-center w-full sm:w-auto transition">Selesai</a>
                 </div>
                 <?php 
+                            }
                         }
                     }
                 }
@@ -462,24 +489,26 @@ if ($conn !== null) {
                 <h3 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">🎯 Monitoring Radar Urgent BK</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <?php
-                    if ($conn !== null) {
+                    if (isset($conn) && $conn !== null) {
                         $q_rdr = $conn->query("SELECT s.*, c.nama_kelas FROM students s LEFT JOIN classes c ON s.class_id = c.id WHERE s.status_warna IN ('kuning', 'merah') ORDER BY s.status_warna DESC");
-                        while($r = $q_rdr->fetch(PDO::FETCH_ASSOC)) {
-                            $col = $r['status_warna'] == 'merah' ? 'border-rose-200 bg-rose-50/50' : 'border-amber-200 bg-amber-50/50';
-                            echo "<div class='p-4 border rounded-2xl $col text-xs flex justify-between items-center'>
-                                    <div>
-                                        <p class='font-black text-slate-900 dark:text-white'>" . htmlspecialchars($r['nama'], ENT_QUOTES) . "</p>
-                                        <p class='text-[10px] text-slate-400 font-bold mt-1'>Kelas: " . htmlspecialchars($r['nama_kelas'] ?? '-', ENT_QUOTES) . "</p>
-                                    </div>
-                                    <span class='font-bold uppercase text-[9px]'>Zona " . htmlspecialchars($r['status_warna'], ENT_QUOTES) . "</span>
-                                  </div>";
+                        if ($q_rdr) {
+                            while($r = $q_rdr->fetch(PDO::FETCH_ASSOC)) {
+                                $col = $r['status_warna'] == 'merah' ? 'border-rose-200 bg-rose-50/50' : 'border-amber-200 bg-amber-50/50';
+                                echo "<div class='p-4 border rounded-2xl $col text-xs flex justify-between items-center'>
+                                        <div>
+                                            <p class='font-black text-slate-900 dark:text-white'>" . htmlspecialchars($r['nama'] ?? 'Unknown', ENT_QUOTES, 'UTF-8') . "</p>
+                                            <p class='text-[10px] text-slate-400 font-bold mt-1'>Kelas: " . htmlspecialchars($r['nama_kelas'] ?? '-', ENT_QUOTES, 'UTF-8') . "</p>
+                                        </div>
+                                        <span class='font-bold uppercase text-[9px]'>Zona " . htmlspecialchars($r['status_warna'] ?? '-', ENT_QUOTES, 'UTF-8') . "</span>
+                                      </div>";
+                            }
                         }
                     }
                     ?>
                 </div>
             </div>
 
-            <?php if (count(array_intersect(['bk', 'super_admin'], $user_roles)) > 0): ?>
+            <?php if (count(array_intersect(['bk', 'admin', 'super_admin'], $user_roles)) > 0): ?>
             <div id="section_cetak_bk" class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-4">
                 <div class="border-b pb-2 border-slate-100 dark:border-slate-800">
                     <h3 class="text-sm font-black text-slate-900 dark:text-white">🖨️ Pusat Layanan Dokumen & Administrasi BK</h3>
@@ -493,9 +522,9 @@ if ($conn !== null) {
                             <input type="text" id="pusat_student_search" oninput="filterSiswaPusat(this.value)" onfocus="bukaDropdownPusat()" placeholder="Ketik nama atau kelas siswa..." class="w-full p-2.5 text-xs font-bold border rounded-xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 outline-none" autocomplete="off">
                             <div id="pusat_dropdown_hasil" class="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-slate-900 border rounded-xl shadow-lg hidden z-50 divide-y">
                                 <?php foreach($daftar_siswa_global as $sis): ?>
-                                <div class="p-2.5 hover:bg-slate-50 cursor-pointer text-xs item-siswa-pusat transition" data-nama="<?php echo htmlspecialchars($sis['nama'] . ' ' . ($sis['nama_kelas'] ?? ''), ENT_QUOTES); ?>" onclick="pilihSiswaPusat('<?php echo $sis['id']; ?>', '<?php echo htmlspecialchars(addslashes($sis['nama']), ENT_QUOTES); ?> (<?php echo htmlspecialchars(addslashes($sis['nama_kelas'] ?? '-'), ENT_QUOTES); ?>)')">
-                                    <p class="font-bold text-slate-800 dark:text-slate-200"><?php echo htmlspecialchars($sis['nama'], ENT_QUOTES); ?></p>
-                                    <p class="text-[10px] text-slate-400"><?php echo htmlspecialchars($sis['nama_kelas'] ?? 'Tanpa Rombel', ENT_QUOTES); ?></p>
+                                <div class="p-2.5 hover:bg-slate-50 cursor-pointer text-xs item-siswa-pusat transition" data-nama="<?php echo htmlspecialchars(($sis['nama'] ?? '') . ' ' . ($sis['nama_kelas'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" onclick="pilihSiswaPusat('<?php echo htmlspecialchars($sis['id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars(addslashes($sis['nama'] ?? ''), ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars(addslashes($sis['nama_kelas'] ?? '-'), ENT_QUOTES, 'UTF-8'); ?>)')">
+                                    <p class="font-bold text-slate-800 dark:text-slate-200"><?php echo htmlspecialchars($sis['nama'] ?? 'Unknown', ENT_QUOTES, 'UTF-8'); ?></p>
+                                    <p class="text-[10px] text-slate-400"><?php echo htmlspecialchars($sis['nama_kelas'] ?? 'Tanpa Rombel', ENT_QUOTES, 'UTF-8'); ?></p>
                                 </div>
                                 <?php endforeach; ?>
                             </div>
@@ -530,7 +559,7 @@ if ($conn !== null) {
             </div>
             <?php endif; ?>
 
-            <?php if (count(array_intersect(['kepala_jurusan', 'super_admin'], $user_roles)) > 0): ?>
+            <?php if (count(array_intersect(['kepala_jurusan', 'admin', 'super_admin'], $user_roles)) > 0): ?>
             <div id="section_kajur" class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-4">
                 <div class="border-b pb-2">
                     <h3 class="text-sm font-black text-slate-900 dark:text-white">⚡ Lembar Validasi Kelayakan Hubungan Industri (PKL)</h3>
@@ -547,21 +576,23 @@ if ($conn !== null) {
                         </thead>
                         <tbody class="divide-y font-medium text-slate-700 dark:text-slate-300">
                             <?php
-                            if ($conn !== null) {
+                            if (isset($conn) && $conn !== null) {
                                 $q_pkl = $conn->query("SELECT s.*, c.nama_kelas FROM students s JOIN classes c ON s.class_id = c.id ORDER BY c.nama_kelas ASC, s.nama ASC");
-                                while($spkl = $q_pkl->fetch(PDO::FETCH_ASSOC)) {
-                                    $status_pkl = $spkl['status_warna'] === 'merah' ? '❌ Ditangguhkan (Butuh Bimbingan)' : ($spkl['status_warna'] === 'kuning' ? '⚠️ Pantauan Khusus Industri' : '✅ Layak Berangkat DUDI');
-                                    $badge_c = $spkl['status_warna'] === 'merah' ? 'bg-rose-50 text-rose-600' : ($spkl['status_warna'] === 'kuning' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600');
-                                    ?>
+                                if ($q_pkl) {
+                                    while($spkl = $q_pkl->fetch(PDO::FETCH_ASSOC)) {
+                                        $status_pkl = ($spkl['status_warna'] ?? '') === 'merah' ? '❌ Ditangguhkan (Butuh Bimbingan)' : (($spkl['status_warna'] ?? '') === 'kuning' ? '⚠️ Pantauan Khusus Industri' : '✅ Layak Berangkat DUDI');
+                                        $badge_c = ($spkl['status_warna'] ?? '') === 'merah' ? 'bg-rose-50 text-rose-600' : (($spkl['status_warna'] ?? '') === 'kuning' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600');
+                                        ?>
                             <tr class="hover:bg-slate-50/50">
                                 <td class="px-4 py-3 font-bold text-slate-900 dark:text-white">
-                                    <?php echo htmlspecialchars($spkl['nama'], ENT_QUOTES); ?><span class="block text-[10px] text-slate-400 font-normal"><?php echo htmlspecialchars($spkl['nama_kelas'] ?? '-', ENT_QUOTES); ?></span>
+                                    <?php echo htmlspecialchars($spkl['nama'] ?? 'Unknown', ENT_QUOTES, 'UTF-8'); ?><span class="block text-[10px] text-slate-400 font-normal"><?php echo htmlspecialchars($spkl['nama_kelas'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></span>
                                 </td>
-                                <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase <?php echo $badge_c; ?>"><?php echo htmlspecialchars($spkl['status_warna'], ENT_QUOTES); ?></span>
+                                <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase <?php echo $badge_c; ?>"><?php echo htmlspecialchars($spkl['status_warna'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></span>
                                 </td>
-                                <td class="px-4 py-3 text-center font-bold text-indigo-600 dark:text-indigo-400"><?php echo htmlspecialchars($status_pkl, ENT_QUOTES); ?></td>
+                                <td class="px-4 py-3 text-center font-bold text-indigo-600 dark:text-indigo-400"><?php echo htmlspecialchars($status_pkl, ENT_QUOTES, 'UTF-8'); ?></td>
                             </tr>
                             <?php
+                                    }
                                 }
                             }
                             ?>
@@ -571,7 +602,7 @@ if ($conn !== null) {
             </div>
             <?php endif; ?>
 
-            <?php if (count(array_intersect(['waka_kesiswaan', 'super_admin'], $user_roles)) > 0): ?>
+            <?php if (count(array_intersect(['waka_kesiswaan', 'admin', 'super_admin'], $user_roles)) > 0): ?>
             <div id="section_waka" class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-6">
                 <div>
                     <h3 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">📊 Analitik Eksklusif: Peta Kerawanan Sekolah</h3>
@@ -584,10 +615,10 @@ if ($conn !== null) {
                                 <?php else: ?>
                                 <?php foreach($peta_kerawanan_kelas as $pk): ?>
                                 <div class="flex justify-between items-center text-xs font-semibold border-b border-slate-100 dark:border-slate-800/40 pb-2 mb-2 last:border-0 last:pb-0">
-                                    <span class="text-slate-700 dark:text-slate-300">🏢 Kelas <?php echo htmlspecialchars($pk['nama_kelas'], ENT_QUOTES); ?></span>
+                                    <span class="text-slate-700 dark:text-slate-300">🏢 Kelas <?php echo htmlspecialchars($pk['nama_kelas'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></span>
                                     <div class="flex items-center gap-2">
-                                        <span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 font-bold"><?php echo $pk['total_cases']; ?> Insiden</span>
-                                        <button onclick="alert('Peringatan dikirim ke Wali Kelas: <?php echo htmlspecialchars(addslashes($pk['nama_kelas']), ENT_QUOTES); ?> untuk Home Visit')" class="text-[9px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-200 transition">
+                                        <span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 font-bold"><?php echo (int)($pk['total_cases'] ?? 0); ?> Insiden</span>
+                                        <button onclick="alert('Peringatan dikirim ke Wali Kelas: <?php echo htmlspecialchars(addslashes($pk['nama_kelas'] ?? ''), ENT_QUOTES, 'UTF-8'); ?> untuk Home Visit')" class="text-[9px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-200 transition">
                                             📢 Tugaskan
                                         </button>
                                     </div>
@@ -605,8 +636,8 @@ if ($conn !== null) {
                                 <?php else: ?>
                                 <?php foreach($tren_pelanggaran as $tp): ?>
                                 <div class="flex justify-between items-center text-xs font-semibold">
-                                    <span class="text-slate-700 dark:text-slate-300 truncate max-w-[180px]">⚖️ <?php echo htmlspecialchars($tp['nama_kejadian'], ENT_QUOTES); ?></span>
-                                    <span class="text-indigo-600 font-bold"><?php echo $tp['jumlah']; ?>x Terjadi</span>
+                                    <span class="text-slate-700 dark:text-slate-300 truncate max-w-[180px]">⚖️ <?php echo htmlspecialchars($tp['nama_kejadian'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <span class="text-indigo-600 font-bold"><?php echo (int)($tp['jumlah'] ?? 0); ?>x Terjadi</span>
                                 </div>
                                 <?php endforeach; ?>
                                 <?php endif; ?>
@@ -625,37 +656,42 @@ if ($conn !== null) {
 
                     <div class="space-y-3 mt-4 max-w-3xl">
                         <?php
-                        if ($conn !== null) {
+                        if (isset($conn) && $conn !== null) {
                             $q_waka_list = $conn->query("SELECT s.*, c.nama_kelas FROM students s LEFT JOIN classes c ON s.class_id = c.id WHERE s.status_warna = 'merah' AND s.status_sp < 4 ORDER BY s.status_sp DESC, s.nama ASC");
-                            if($q_waka_list->rowCount() == 0) {
-                                echo '<p class="text-xs italic text-slate-400 py-8 text-center bg-slate-50 dark:bg-slate-800/20 rounded-2xl border dark:border-slate-800">Radar Bersih! Tidak ada ajuan siswa Zona Merah yang membutuhkan tindakan penegakan hukum kesiswaan.</p>';
-                            } else {
-                                while($sw = $q_waka_list->fetch(PDO::FETCH_ASSOC)) {
-                                    $current_sp = (int)$sw['status_sp'];
-                                    
-                                    if ($current_sp === 0) {
+                            if ($q_waka_list) {
+                                if($q_waka_list->rowCount() == 0) {
+                                    echo '<p class="text-xs italic text-slate-400 py-8 text-center bg-slate-50 dark:bg-slate-800/20 rounded-2xl border dark:border-slate-800">Radar Bersih! Tidak ada ajuan siswa Zona Merah yang membutuhkan tindakan penegakan hukum kesiswaan.</p>';
+                                } else {
+                                    while($sw = $q_waka_list->fetch(PDO::FETCH_ASSOC)) {
+                                        $current_sp = (int)($sw['status_sp'] ?? 0);
+                                        
                                         $btn_text = "⚠️ Terbitkan Surat Peringatan 1 (SP 1)";
                                         $btn_color = "bg-amber-600 hover:bg-amber-700 text-white";
-                                        $action_url = "actions/proses_waka_sp.php?aksi=terbit_sp&student_id=" . $sw['id'] . "&level=1";
-                                    } elseif ($current_sp === 1) {
-                                        $btn_text = "🔥 Naikkan Ke Peringatan 2 (SP 2)";
-                                        $btn_color = "bg-orange-600 hover:bg-orange-700 text-white";
-                                        $action_url = "actions/proses_waka_sp.php?aksi=terbit_sp&student_id=" . $sw['id'] . "&level=2";
-                                    } elseif ($current_sp === 2) {
-                                        $btn_text = "🚨 Terbitkan SP 3 / Panggilan Pleno";
-                                        $btn_color = "bg-rose-600 hover:bg-rose-700 text-white";
-                                        $action_url = "actions/proses_waka_sp.php?aksi=terbit_sp&student_id=" . $sw['id'] . "&level=3";
-                                    } elseif ($current_sp === 3) {
-                                        $btn_text = "❌ EKSEKUSI PEMBERHENTIAN SISWA (DO)";
-                                        $btn_color = "bg-red-700 hover:bg-red-800 text-white animate-pulse";
-                                        $action_url = "actions/proses_waka_sp.php?aksi=drop_out&student_id=" . $sw['id'];
-                                    }
-                                    ?>
+                                        $action_url = "#";
+                                        
+                                        if ($current_sp === 0) {
+                                            $btn_text = "⚠️ Terbitkan Surat Peringatan 1 (SP 1)";
+                                            $btn_color = "bg-amber-600 hover:bg-amber-700 text-white";
+                                            $action_url = "actions/proses_waka_sp.php?aksi=terbit_sp&student_id=" . urlencode($sw['id']) . "&level=1";
+                                        } elseif ($current_sp === 1) {
+                                            $btn_text = "🔥 Naikkan Ke Peringatan 2 (SP 2)";
+                                            $btn_color = "bg-orange-600 hover:bg-orange-700 text-white";
+                                            $action_url = "actions/proses_waka_sp.php?aksi=terbit_sp&student_id=" . urlencode($sw['id']) . "&level=2";
+                                        } elseif ($current_sp === 2) {
+                                            $btn_text = "🚨 Terbitkan SP 3 / Panggilan Pleno";
+                                            $btn_color = "bg-rose-600 hover:bg-rose-700 text-white";
+                                            $action_url = "actions/proses_waka_sp.php?aksi=terbit_sp&student_id=" . urlencode($sw['id']) . "&level=3";
+                                        } elseif ($current_sp === 3) {
+                                            $btn_text = "❌ EKSEKUSI PEMBERHENTIAN SISWA (DO)";
+                                            $btn_color = "bg-red-700 hover:bg-red-800 text-white animate-pulse";
+                                            $action_url = "actions/proses_waka_sp.php?aksi=drop_out&student_id=" . urlencode($sw['id']);
+                                        }
+                                        ?>
                                     <div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs">
                                         <div>
                                             <div class="flex items-center gap-2">
-                                                <h4 class="text-sm font-bold text-slate-900 dark:text-white"><?php echo htmlspecialchars($sw['nama'], ENT_QUOTES); ?></h4>
-                                                <span class="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-bold text-slate-500"><?php echo htmlspecialchars($sw['nama_kelas'] ?? '-', ENT_QUOTES); ?></span>
+                                                <h4 class="text-sm font-bold text-slate-900 dark:text-white"><?php echo htmlspecialchars($sw['nama'] ?? 'Unknown', ENT_QUOTES, 'UTF-8'); ?></h4>
+                                                <span class="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-bold text-slate-500"><?php echo htmlspecialchars($sw['nama_kelas'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></span>
                                             </div>
                                             <p class="text-[11px] text-slate-400 mt-1 font-semibold">
                                                 Status Yuridis Saat Ini:
@@ -665,116 +701,18 @@ if ($conn !== null) {
                                             </p>
                                         </div>
                                         <div class="w-full sm:w-auto shrink-0">
-                                            <a href="<?php echo $action_url; ?>" onclick="return confirm('Apakah Anda yakin ingin mengeksekusi tindakan hukum ini terhadap siswa terkait? Keputusan ini akan dicatat dalam lembar riwayat permanen sekolah.')" class="block text-center text-xs font-bold py-2.5 px-4 rounded-xl transition <?php echo $btn_color; ?>">
-                                                <?php echo $btn_text; ?>
+                                            <a href="<?php echo htmlspecialchars($action_url, ENT_QUOTES, 'UTF-8'); ?>" onclick="return confirm('Apakah Anda yakin ingin mengeksekusi tindakan hukum ini terhadap siswa terkait? Keputusan ini akan dicatat dalam lembar riwayat permanen sekolah.')" class="block text-center text-xs font-bold py-2.5 px-4 rounded-xl transition <?php echo $btn_color; ?>">
+                                                <?php echo htmlspecialchars($btn_text, ENT_QUOTES, 'UTF-8'); ?>
                                             </a>
                                         </div>
                                     </div>
                                     <?php
+                                    }
                                 }
                             }
                         }
                         ?>
                     </div>
-                </div>
-            </div>
-            <?php endif; ?>
-
-            <?php if (count(array_intersect(['admin', 'super_admin'], $user_roles)) > 0): ?>
-            <div id="section_master_data" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 target-content-section hidden">
-                <div class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 shadow-sm space-y-3">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">👤 Registrasi Siswa Tunggal</span>
-                    <form action="actions/proses_admin.php?aksi=tambah_siswa" method="POST" class="space-y-3">
-                        <div class="grid grid-cols-2 gap-2">
-                            <input type="text" name="nisn" placeholder="Nomor NISN" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 outline-none dark:text-white" required>
-                            <select name="class_id" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 outline-none text-slate-700 dark:text-slate-300 font-semibold" required>
-                                <option value="">Pilih Kelas</option>
-                                <?php foreach($daftar_kelas_global as $cls) { echo "<option value='{$cls['id']}'>" . htmlspecialchars($cls['nama_kelas'], ENT_QUOTES) . "</option>"; } ?>
-                            </select>
-                        </div>
-                        <input type="text" name="nama" placeholder="Nama Lengkap Siswa" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 outline-none dark:text-white" required>
-                        <button type="submit" class="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold py-2.5 rounded-xl">Daftarkan Murid</button>
-                    </form>
-                </div>
-
-                <div class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 shadow-sm space-y-3">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">📂 Impor Massal Spreadsheet</span>
-                    <form action="actions/proses_admin.php?aksi=import_csv" method="POST" enctype="multipart/form-data" class="space-y-3">
-                        <div>
-                            <select name="tipe_impor" onchange="document.getElementById('link_template_download').href = 'actions/download_template.php?type=' + this.value" class="w-full p-2 text-xs font-bold border rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                                <option value="siswa">Data Siswa Baru</option>
-                                <option value="staf">Otoritas Staf & Guru Piket</option>
-                            </select>
-                        </div>
-                        <input type="file" name="file_csv" accept=".csv" class="w-full text-xs text-slate-500 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-slate-100" required>
-                        <div class="flex gap-2 pt-1">
-                            <a id="link_template_download" href="actions/download_template.php?type=siswa" class="w-1/2 bg-slate-100 text-slate-800 text-center text-[11px] font-bold py-2.5 rounded-xl border block">📥 Template</a>
-                            <button type="submit" class="w-1/2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[11px] font-bold py-2.5 rounded-xl">📤 Unggah</button>
-                        </div>
-                    </form>
-                </div>
-
-                <div class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 shadow-sm space-y-3">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">🏫 Manajemen Struktur Kelas</span>
-                    <form action="actions/proses_admin.php?aksi=tambah_kelas" method="POST" class="space-y-3">
-                        <input type="text" name="nama_kelas" placeholder="Contoh: XI DKV 1" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 outline-none dark:text-white" required>
-                        <button type="submit" class="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold py-2.5 rounded-xl">Simpan Kelas Baru</button>
-                    </form>
-                    <hr class="my-2">
-                    <div class="max-h-32 overflow-y-auto divide-y text-xs font-semibold pr-1">
-                        <?php foreach($daftar_kelas_global as $c): ?>
-                        <div class="py-1.5 flex justify-between items-center text-slate-700 dark:text-slate-300">
-                            <span>🏢 <?php echo htmlspecialchars($c['nama_kelas'], ENT_QUOTES); ?></span>
-                            <button type="button" onclick="bukaModalEdit('kelas', '<?php echo $c['id']; ?>', '<?php echo htmlspecialchars(addslashes($c['nama_kelas']), ENT_QUOTES); ?>')" class="text-indigo-600 font-bold text-[10px]">✏️ Edit</button>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-
-                <?php // Fitur v2.5.0: Input Staf Manual ?>
-                <div class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 shadow-sm space-y-3">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">👨‍🏫 Otoritas Staf & Guru Piket</span>
-                    <form action="actions/proses_admin.php?aksi=tambah_guru" method="POST" class="space-y-3">
-                        <input type="text" name="nama_guru" placeholder="Nama Lengkap Staf" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 outline-none dark:text-white" required>
-                        <div class="grid grid-cols-2 gap-2">
-                            <input type="text" name="username" placeholder="Username" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 outline-none dark:text-white" required>
-                            <input type="password" name="password" placeholder="Password" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 outline-none" required>
-                        </div>
-                        <select name="role" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300" required>
-                            <option value="guru">Guru Piket / Wali Kelas</option>
-                            <option value="bk">Bimbingan Konseling (BK)</option>
-                            <option value="waka_kesiswaan">Waka Kesiswaan</option>
-                            <option value="kepala_jurusan">Kepala Jurusan (Kajur)</option>
-                            <option value="admin">Administrator Sistem</option>
-                        </select>
-                        <button type="submit" class="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold py-2.5 rounded-xl">Daftarkan Akun</button>
-                    </form>
-                </div>
-
-                <?php // Fitur v2.5.0: Input Aturan Manual ?>
-                <div class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 shadow-sm space-y-3">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">⚖️ Buku Aturan & Bobot Risiko</span>
-                    <form action="actions/proses_admin.php?aksi=tambah_kategori" method="POST" class="space-y-3">
-                        <input type="text" name="nama_kejadian" placeholder="Nama Pelanggaran" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 dark:text-white" required>
-                        <select name="bobot_risiko" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300" required>
-                            <option value="ringan">Ringan (Hijau)</option>
-                            <option value="sedang">Sedang (Kuning)</option>
-                            <option value="berat">Berat (Merah)</option>
-                        </select>
-                        <button type="submit" class="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold py-2.5 rounded-xl">Tambahkan Kasus</button>
-                    </form>
-                </div>
-
-                <?php // Fitur v2.5.0: Form Upload Logo Sekolah Terintegrasi v3.0.0 ?>
-                <div class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 shadow-sm space-y-3">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">🖼️ Logo Instansi Sekolah Resmi</span>
-                    <form action="actions/proses_admin.php?aksi=upload_logo" method="POST" enctype="multipart/form-data" class="space-y-4">
-                        <div class="flex items-center gap-3 bg-slate-50 dark:bg-slate-800 p-2.5 rounded-xl border">
-                            <img src="actions/logo_sekolah.png?t=<?php echo time(); ?>" onerror="this.src='https://placehold.co/100x100?text=KOP'" class="h-10 w-10 object-contain bg-white rounded border">
-                            <input type="file" name="logo_file" accept=".png" class="w-full text-xs text-slate-500" required>
-                        </div>
-                        <button type="submit" class="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold py-2.5 rounded-xl">🔄 Perbarui Logo Instansi</button>
-                    </form>
                 </div>
             </div>
             <?php endif; ?>
@@ -833,7 +771,16 @@ if ($conn !== null) {
                 <div>
                     <select name="category_id" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300" required>
                         <option value="">-- Pilih Kasus Aturan --</option>
-                        <?php if ($conn !== null) { $q_cat = $conn->query("SELECT * FROM violation_categories"); while($cat = $q_cat->fetch(PDO::FETCH_ASSOC)) { echo "<option value='{$cat['id']}'>" . htmlspecialchars($cat['nama_kejadian'], ENT_QUOTES) . " ({$cat['bobot_risiko']})</option>"; } } ?>
+                        <?php 
+                        if (isset($conn) && $conn !== null) { 
+                            $q_cat = $conn->query("SELECT * FROM violation_categories"); 
+                            if ($q_cat) {
+                                while($cat = $q_cat->fetch(PDO::FETCH_ASSOC)) { 
+                                    echo "<option value='" . htmlspecialchars($cat['id'] ?? '', ENT_QUOTES, 'UTF-8') . "'>" . htmlspecialchars($cat['nama_kejadian'] ?? '', ENT_QUOTES, 'UTF-8') . " (" . htmlspecialchars($cat['bobot_risiko'] ?? '', ENT_QUOTES, 'UTF-8') . ")</option>"; 
+                                } 
+                            }
+                        } 
+                        ?>
                     </select>
                 </div>
                 <div>
@@ -893,7 +840,16 @@ if ($conn !== null) {
                     <textarea name="deskripsi_tugas" rows="2" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 dark:text-white" placeholder="Tulis petunjuk penugasan karakter..." required></textarea>
                     <select name="penanggung_jawab" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 text-slate-700 font-bold dark:bg-slate-800 dark:text-slate-300" required>
                         <option value="">-- Pilih Otoritas Guru --</option>
-                        <?php if ($conn !== null) { $q_guru = $conn->query("SELECT id, nama FROM staf_sekolah"); while($guru = $q_guru->fetch(PDO::FETCH_ASSOC)) { echo "<option value='{$guru['id']}'>" . htmlspecialchars($guru['nama'], ENT_QUOTES) . "</option>"; } } ?>
+                        <?php 
+                        if (isset($conn) && $conn !== null) { 
+                            $q_guru = $conn->query("SELECT id, nama FROM staf_sekolah"); 
+                            if ($q_guru) {
+                                while($guru = $q_guru->fetch(PDO::FETCH_ASSOC)) { 
+                                    echo "<option value='" . htmlspecialchars($guru['id'] ?? '', ENT_QUOTES, 'UTF-8') . "'>" . htmlspecialchars($guru['nama'] ?? 'Unknown', ENT_QUOTES, 'UTF-8') . "</option>"; 
+                                } 
+                            }
+                        } 
+                        ?>
                     </select>
                     <button type="submit" class="w-full bg-slate-900 text-white font-bold py-2.5 rounded-xl text-xs mt-2 dark:bg-white dark:text-slate-900">Kirim Mandat ke Lapangan</button>
                 </form>
@@ -912,7 +868,7 @@ if ($conn !== null) {
                 <input type="hidden" id="edit_jurnal_id" name="id">
                 <select id="edit_jurnal_category_id" name="category_id" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300" required>
                     <?php foreach($daftar_kategori_global as $cat): ?>
-                    <option value="<?php echo $cat['id']; ?>"><?php echo htmlspecialchars($cat['nama_kejadian'], ENT_QUOTES); ?> (<?php echo htmlspecialchars($cat['bobot_risiko'], ENT_QUOTES); ?>)</option>
+                    <option value="<?php echo htmlspecialchars($cat['id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($cat['nama_kejadian'] ?? '', ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars($cat['bobot_risiko'] ?? '', ENT_QUOTES, 'UTF-8'); ?>)</option>
                     <?php endforeach; ?>
                 </select>
                 <textarea id="edit_jurnal_catatan" name="catatan" rows="3" class="w-full p-2.5 text-xs border rounded-xl bg-slate-50 dark:bg-slate-800 outline-none dark:text-white" required></textarea>

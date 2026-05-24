@@ -8,7 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Proteksi Hak Akses Keamanan Admin
-if (!isset($_SESSION['user_id']) || !count(array_intersect(['admin', 'super_admin'], $_SESSION['user_roles'] ?? [])) > 0) {
+if (!isset($_SESSION['user_id']) || !in_array('admin', $_SESSION['user_roles'] ?? [])) {
     // PERBAIKAN PATH: Kembali ke root utama jika bukan admin
     header("Location: ../index.php");
     exit();

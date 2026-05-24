@@ -6,14 +6,23 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Proteksi: hanya admin (semua akses penuh)
-if (!isset($_SESSION['user_id']) || !in_array('admin', $_SESSION['user_roles'] ?? [])) {
+// Mengantisipasi jika roles di session berupa string tunggal atau array
+$user_roles = $_SESSION['user_roles'] ?? [];
+if (!is_array($user_roles)) {
+    $user_roles = [$user_roles];
+}
+
+// Proteksi: hanya admin atau super_admin yang boleh masuk
+if (!isset($_SESSION['user_id']) || (!in_array('admin', $user_roles) && !in_array('super_admin', $user_roles))) {
     header("Location: index.php");
     exit();
 }
 
-$user_id = $_SESSION['user_id'];
-$user_nama = $_SESSION['user_nama'];
+$user_id = $_SESSION['user_id'] ?? 0;
+$user_nama = $_SESSION['user_nama'] ?? 'Administrator';
+
+// Definisi $is_super_admin agar tidak error (Undefined variable)
+$is_super_admin = in_array('super_admin', $user_roles);
 
 // Ambil mode/tab yang aktif
 $tab = $_GET['tab'] ?? 'overview';
@@ -23,13 +32,13 @@ $action = $_GET['action'] ?? '';
 $edit_id = $_GET['edit_id'] ?? '';
 $edit_data = [];
 
-if ($edit_id && $conn !== null) {
+if ($edit_id && isset($conn) && $conn !== null) {
     $tab_for_edit = $_GET['edit_tab'] ?? 'staf';
-    if ($tab_for_edit === 'staf' && $is_super_admin) {
+    if ($tab_for_edit === 'staf' && ($is_super_admin || in_array('admin', $user_roles))) {
         $stmt = $conn->prepare("SELECT id, nama, email, username, roles FROM staf_sekolah WHERE id = ?");
         $stmt->execute([$edit_id]);
         $edit_data = $stmt->fetch(PDO::FETCH_ASSOC);
-    } elseif ($tab_for_edit === 'siswa' && $is_super_admin) {
+    } elseif ($tab_for_edit === 'siswa') {
         $stmt = $conn->prepare("SELECT s.id, s.nisn, s.nama, s.class_id, c.nama_kelas FROM students s LEFT JOIN classes c ON s.class_id = c.id WHERE s.id = ?");
         $stmt->execute([$edit_id]);
         $edit_data = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -43,7 +52,7 @@ if (!empty($_SESSION['notif'])) {
 }
 
 // Ambil daftar role yang tersedia
-$available_roles = ['admin', 'guru', 'bk', 'waka'];
+$available_roles = ['super_admin', 'admin', 'guru', 'bk', 'waka'];
 
 // Ambil data global
 $daftar_kelas = [];
@@ -51,7 +60,7 @@ $daftar_kategori = [];
 $daftar_staf = [];
 $daftar_siswa = [];
 
-if ($conn !== null) {
+if (isset($conn) && $conn !== null) {
     $daftar_kelas = $conn->query("SELECT id, nama_kelas FROM classes ORDER BY nama_kelas ASC")->fetchAll(PDO::FETCH_ASSOC);
     $daftar_kategori = $conn->query("SELECT id, nama_kejadian, bobot_risiko FROM violation_categories ORDER BY nama_kejadian ASC")->fetchAll(PDO::FETCH_ASSOC);
     $daftar_staf = $conn->query("SELECT id, nama, email, username, roles FROM staf_sekolah ORDER BY nama ASC")->fetchAll(PDO::FETCH_ASSOC);
@@ -72,6 +81,7 @@ $stat_kategori = count($daftar_kategori);
     <title>Admin Panel - SinergiCare</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #f4f4f6; }
@@ -108,9 +118,9 @@ $stat_kategori = count($daftar_kategori);
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Notifikasi -->
         <?php if (!empty($notif)): ?>
-            <div class="mb-6 p-4 rounded-xl border <?php echo $notif['type'] === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'; ?>">
+            <div class="mb-6 p-4 rounded-xl border <?php echo ($notif['type'] ?? 'success') === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'; ?>">
                 <div class="flex items-center justify-between">
-                    <span><?php echo htmlspecialchars($notif['message']); ?></span>
+                    <span><?php echo htmlspecialchars($notif['message'] ?? ''); ?></span>
                     <button onclick="this.parentElement.parentElement.remove()" class="text-xl font-bold opacity-50 hover:opacity-100">×</button>
                 </div>
             </div>
@@ -140,10 +150,8 @@ $stat_kategori = count($daftar_kategori);
         <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-sm mb-8 overflow-hidden">
             <div class="flex flex-wrap border-b border-slate-200 dark:border-slate-800">
                 <a href="?tab=overview" class="tab-btn <?php echo $tab === 'overview' ? 'active' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'; ?> px-6 py-4 font-semibold text-sm">📊 Overview</a>
-                <?php if ($is_super_admin): ?>
                 <a href="?tab=staf" class="tab-btn <?php echo $tab === 'staf' ? 'active' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'; ?> px-6 py-4 font-semibold text-sm">👥 Manajemen Staf</a>
                 <a href="?tab=siswa" class="tab-btn <?php echo $tab === 'siswa' ? 'active' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'; ?> px-6 py-4 font-semibold text-sm">🎓 Manajemen Siswa</a>
-                <?php endif; ?>
                 <a href="?tab=kelas" class="tab-btn <?php echo $tab === 'kelas' ? 'active' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'; ?> px-6 py-4 font-semibold text-sm">🏫 Kelas & Kategori</a>
             </div>
 
@@ -170,7 +178,7 @@ $stat_kategori = count($daftar_kategori);
                                 <h4 class="font-bold text-slate-900 dark:text-white mb-3">ℹ️ Informasi Sistem</h4>
                                 <ul class="space-y-2 text-sm text-slate-600 dark:text-slate-300">
                                     <li>📦 Total Data Master: <span class="font-bold"><?php echo $stat_staf + $stat_siswa + $stat_kelas + $stat_kategori; ?></span></li>
-                                    <li>✅ Database: Connected</li>
+                                    <li>✅ Database: <?php echo isset($conn) ? 'Connected' : '<span class="text-red-500">Disconnected</span>'; ?></li>
                                     <li>🔐 Role: <?php echo $is_super_admin ? 'Super Admin' : 'Admin'; ?></li>
                                     <li>⏰ Waktu Server: <?php echo date('d M Y H:i:s'); ?></li>
                                 </ul>
@@ -178,8 +186,8 @@ $stat_kategori = count($daftar_kategori);
                         </div>
                     </div>
 
-                <!-- TAB: Manajemen Staf (Super Admin Only) -->
-                <?php elseif ($tab === 'staf' && $is_super_admin): ?>
+                <!-- TAB: Manajemen Staf -->
+                <?php elseif ($tab === 'staf'): ?>
                     <div class="space-y-6">
                         <?php if ($action === 'create' || ($action === 'edit' && $edit_id)): ?>
                             <!-- Form Create/Edit Staf -->
@@ -212,8 +220,10 @@ $stat_kategori = count($daftar_kategori);
                                             <select class="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-indigo-500" name="roles" required>
                                                 <option value="">-- Pilih Role --</option>
                                                 <?php foreach ($available_roles as $role): ?>
-                                                    <option value="<?php echo $role; ?>" <?php echo ($edit_data['roles'] ?? '') === $role ? 'selected' : ''; ?>>
-                                                        <?php echo ucfirst(str_replace('_', ' ', $role)); ?>
+                                                    <!-- Sembunyikan opsi super_admin jika pembuat bukan super_admin -->
+                                                    <?php if($role === 'super_admin' && !$is_super_admin) continue; ?>
+                                                    <option value="<?php echo htmlspecialchars($role); ?>" <?php echo ($edit_data['roles'] ?? '') === $role ? 'selected' : ''; ?>>
+                                                        <?php echo ucwords(str_replace('_', ' ', $role)); ?>
                                                     </option>
                                                 <?php endforeach; ?>
                                             </select>
@@ -227,7 +237,7 @@ $stat_kategori = count($daftar_kategori);
 
                                     <div class="flex gap-3 pt-4">
                                         <button type="submit" class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition">💾 Simpan</button>
-                                        <a href="?tab=staf" class="bg-slate-300 dark:bg-slate-700 text-slate-900 dark:text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition">❌ Batal</a>
+                                        <a href="?tab=staf" class="bg-slate-300 dark:bg-slate-700 text-slate-900 dark:text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition inline-block text-center">❌ Batal</a>
                                     </div>
                                 </form>
                             </div>
@@ -254,7 +264,7 @@ $stat_kategori = count($daftar_kategori);
                                 <tbody class="divide-y divide-slate-200 dark:divide-slate-700">
                                     <?php foreach ($daftar_staf as $staf): ?>
                                     <tr class="hover:bg-slate-50 dark:hover:bg-slate-800 transition">
-                                        <td class="px-4 py-3"><span class="font-bold text-indigo-600"><?php echo $staf['id']; ?></span></td>
+                                        <td class="px-4 py-3"><span class="font-bold text-indigo-600"><?php echo htmlspecialchars($staf['id']); ?></span></td>
                                         <td class="px-4 py-3"><?php echo htmlspecialchars($staf['nama']); ?></td>
                                         <td class="px-4 py-3 text-slate-600 dark:text-slate-400"><?php echo htmlspecialchars($staf['email']); ?></td>
                                         <td class="px-4 py-3"><code class="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-xs"><?php echo htmlspecialchars($staf['username']); ?></code></td>
@@ -267,23 +277,29 @@ $stat_kategori = count($daftar_kategori);
                                                     'bk' => 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-200',
                                                     'waka' => 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200',
                                                 ];
-                                                echo $role_colors[$staf['roles']] ?? 'bg-slate-100 text-slate-800';
+                                                echo $role_colors[$staf['roles'] ?? ''] ?? 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300';
                                             ?>">
-                                                <?php echo ucfirst(str_replace('_', ' ', $staf['roles'])); ?>
+                                                <?php echo ucwords(str_replace('_', ' ', htmlspecialchars($staf['roles'] ?? '-'))); ?>
                                             </span>
                                         </td>
                                         <td class="px-4 py-3 flex gap-2">
-                                            <a href="?tab=staf&action=edit&edit_id=<?php echo $staf['id']; ?>&edit_tab=staf" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold text-xs">✏️ Edit</a>
-                                            <a href="actions/proses_admin.php?aksi=delete_staf&staf_id=<?php echo $staf['id']; ?>" class="text-rose-600 dark:text-rose-400 hover:underline font-semibold text-xs" onclick="return confirm('Yakin hapus staf ini?');">🗑️ Hapus</a>
+                                            <a href="?tab=staf&action=edit&edit_id=<?php echo htmlspecialchars($staf['id']); ?>&edit_tab=staf" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold text-xs">✏️ Edit</a>
+                                            <!-- Jangan izinkan menghapus diri sendiri -->
+                                            <?php if($staf['id'] != $user_id): ?>
+                                                <a href="actions/proses_admin.php?aksi=delete_staf&staf_id=<?php echo htmlspecialchars($staf['id']); ?>" class="text-rose-600 dark:text-rose-400 hover:underline font-semibold text-xs" onclick="return confirm('Yakin hapus staf ini?');">🗑️ Hapus</a>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
+                                    <?php if(empty($daftar_staf)): ?>
+                                        <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Data Staf masih kosong.</td></tr>
+                                    <?php endif; ?>
                                 </tbody>
                             </table>
                         </div>
 
-                <!-- TAB: Manajemen Siswa (Super Admin Only) -->
-                <?php elseif ($tab === 'siswa' && $is_super_admin): ?>
+                <!-- TAB: Manajemen Siswa -->
+                <?php elseif ($tab === 'siswa'): ?>
                     <div class="space-y-6">
                         <?php if ($action === 'create' || ($action === 'edit' && $edit_id)): ?>
                             <!-- Form Create/Edit Siswa -->
@@ -311,7 +327,7 @@ $stat_kategori = count($daftar_kategori);
                                         <select class="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-indigo-500" name="class_id" required>
                                             <option value="">-- Pilih Kelas --</option>
                                             <?php foreach ($daftar_kelas as $kelas): ?>
-                                                <option value="<?php echo $kelas['id']; ?>" <?php echo ($edit_data['class_id'] ?? '') == $kelas['id'] ? 'selected' : ''; ?>>
+                                                <option value="<?php echo htmlspecialchars($kelas['id']); ?>" <?php echo ($edit_data['class_id'] ?? '') == $kelas['id'] ? 'selected' : ''; ?>>
                                                     <?php echo htmlspecialchars($kelas['nama_kelas']); ?>
                                                 </option>
                                             <?php endforeach; ?>
@@ -320,7 +336,7 @@ $stat_kategori = count($daftar_kategori);
 
                                     <div class="flex gap-3 pt-4">
                                         <button type="submit" class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition">💾 Simpan</button>
-                                        <a href="?tab=siswa" class="bg-slate-300 dark:bg-slate-700 text-slate-900 dark:text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition">❌ Batal</a>
+                                        <a href="?tab=siswa" class="bg-slate-300 dark:bg-slate-700 text-slate-900 dark:text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition inline-block text-center">❌ Batal</a>
                                     </div>
                                 </form>
                             </div>
@@ -346,16 +362,19 @@ $stat_kategori = count($daftar_kategori);
                                 <tbody class="divide-y divide-slate-200 dark:divide-slate-700">
                                     <?php foreach ($daftar_siswa as $siswa): ?>
                                     <tr class="hover:bg-slate-50 dark:hover:bg-slate-800 transition">
-                                        <td class="px-4 py-3"><span class="font-bold text-purple-600"><?php echo $siswa['id']; ?></span></td>
+                                        <td class="px-4 py-3"><span class="font-bold text-purple-600"><?php echo htmlspecialchars($siswa['id']); ?></span></td>
                                         <td class="px-4 py-3"><code class="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-xs"><?php echo htmlspecialchars($siswa['nisn']); ?></code></td>
                                         <td class="px-4 py-3"><?php echo htmlspecialchars($siswa['nama']); ?></td>
                                         <td class="px-4 py-3 text-slate-600 dark:text-slate-400"><?php echo htmlspecialchars($siswa['nama_kelas'] ?? '-'); ?></td>
                                         <td class="px-4 py-3 flex gap-2">
-                                            <a href="?tab=siswa&action=edit&edit_id=<?php echo $siswa['id']; ?>&edit_tab=siswa" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold text-xs">✏️ Edit</a>
-                                            <a href="actions/proses_admin.php?aksi=delete_siswa&siswa_id=<?php echo $siswa['id']; ?>" class="text-rose-600 dark:text-rose-400 hover:underline font-semibold text-xs" onclick="return confirm('Yakin hapus siswa ini?');">🗑️ Hapus</a>
+                                            <a href="?tab=siswa&action=edit&edit_id=<?php echo htmlspecialchars($siswa['id']); ?>&edit_tab=siswa" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold text-xs">✏️ Edit</a>
+                                            <a href="actions/proses_admin.php?aksi=delete_siswa&siswa_id=<?php echo htmlspecialchars($siswa['id']); ?>" class="text-rose-600 dark:text-rose-400 hover:underline font-semibold text-xs" onclick="return confirm('Yakin hapus siswa ini?');">🗑️ Hapus</a>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
+                                    <?php if(empty($daftar_siswa)): ?>
+                                        <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Data Siswa masih kosong.</td></tr>
+                                    <?php endif; ?>
                                 </tbody>
                             </table>
                         </div>
@@ -379,7 +398,7 @@ $stat_kategori = count($daftar_kategori);
                                 <?php foreach ($daftar_kelas as $kls): ?>
                                     <div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700 flex justify-between items-center">
                                         <span class="font-semibold">🏢 <?php echo htmlspecialchars($kls['nama_kelas']); ?></span>
-                                        <button onclick="editKelas('<?php echo $kls['id']; ?>', '<?php echo htmlspecialchars(addslashes($kls['nama_kelas'])); ?>')" class="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-semibold">✏️ Edit</button>
+                                        <button onclick="editKelas('<?php echo htmlspecialchars($kls['id'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($kls['nama_kelas'], ENT_QUOTES, 'UTF-8'); ?>')" class="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-semibold">✏️ Edit</button>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
@@ -416,12 +435,12 @@ $stat_kategori = count($daftar_kategori);
                                                     'sedang' => 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200',
                                                     'berat' => 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
                                                 ];
-                                                echo $risk_colors[$kat['bobot_risiko']] ?? '';
+                                                echo $risk_colors[$kat['bobot_risiko']] ?? 'bg-slate-100 text-slate-800';
                                             ?> px-2 py-1 rounded">
-                                                <?php echo ucfirst($kat['bobot_risiko']); ?>
+                                                <?php echo ucfirst(htmlspecialchars($kat['bobot_risiko'])); ?>
                                             </span>
                                         </div>
-                                        <button onclick="editKategori('<?php echo $kat['id']; ?>', '<?php echo htmlspecialchars(addslashes($kat['nama_kejadian'])); ?>', '<?php echo $kat['bobot_risiko']; ?>')" class="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-semibold">✏️ Edit</button>
+                                        <button onclick="editKategori('<?php echo htmlspecialchars($kat['id'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($kat['nama_kejadian'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($kat['bobot_risiko'], ENT_QUOTES, 'UTF-8'); ?>')" class="text-indigo-600 dark:text-indigo-400 hover:underline text-xs font-semibold">✏️ Edit</button>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
@@ -433,7 +452,7 @@ $stat_kategori = count($daftar_kategori);
     </div>
 
     <!-- Modal Edit Kelas -->
-    <div id="modalEditKelas" class="fixed inset-0 bg-black/40 hidden z-50 flex items-center justify-center p-4">
+    <div id="modalEditKelas" class="fixed inset-0 bg-black/40 hidden z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
         <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800">
             <h3 class="font-bold text-lg mb-4">✏️ Edit Kelas</h3>
             <form method="POST" action="actions/proses_admin.php?aksi=edit_kelas" class="space-y-4">
@@ -451,7 +470,7 @@ $stat_kategori = count($daftar_kategori);
     </div>
 
     <!-- Modal Edit Kategori -->
-    <div id="modalEditKategori" class="fixed inset-0 bg-black/40 hidden z-50 flex items-center justify-center p-4">
+    <div id="modalEditKategori" class="fixed inset-0 bg-black/40 hidden z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
         <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800">
             <h3 class="font-bold text-lg mb-4">✏️ Edit Kategori</h3>
             <form method="POST" action="actions/proses_admin.php?aksi=edit_kategori" class="space-y-4">
