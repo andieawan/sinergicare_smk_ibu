@@ -1,43 +1,36 @@
 <?php
-// setup.php - DATABASE AUTO-INITIALIZER ENGINE FOR SINERGICARE
+// database/setup.php - DATABASE AUTO-INITIALIZER ENGINE FOR SINERGICARE
 header("Content-Type: text/plain");
 
-// --- KONFIGURASI KONEKSI DATABASE AWAL ---
-$host = "localhost";
-$user = "root";
-$pass = ""; // Silakan sesuaikan jika mysql kamu menggunakan password
+$host   = "localhost";
+$user   = "root";
+$pass   = "root"; // Sesuaikan dengan password MySQL Anda
 $dbname = "sinergicare_smk";
 
 try {
-    // 1. Koneksi awal ke MySQL tanpa memilih database terlebih dahulu
     $pdo = new PDO("mysql:host=$host", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
+
     echo "====================================================\n";
     echo " ⚡ SINERGICARE v3.0 DATABASE SETUP WIZARD\n";
     echo "====================================================\n\n";
 
-    // 2. Buat database jika belum ada
     $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbname` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
     echo "✔ Database `$dbname` berhasil diverifikasi/dibuat.\n";
-    
-    // Switch ke database target
-    $pdo->exec("USE `$dbname`");
 
-    // 3. Matikan Foreign Key check sementara agar proses drop tabel bersih tanpa error
+    $pdo->exec("USE `$dbname`");
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
 
-    $tables = ['sp_records', 'journals', 'incidents', 'consequences', 'user_roles', 'roles', 'students', 'classes', 'staf_sekolah', 'violation_categories'];
+    $tables = ['log_surat', 'sp_records', 'journals', 'incidents', 'consequences', 'user_roles', 'roles', 'students', 'classes', 'staf_sekolah', 'violation_categories'];
     foreach ($tables as $table) {
         $pdo->exec("DROP TABLE IF EXISTS `$table`");
     }
-    echo "✔ Pembersihan tabel usang selesai (Fresh Rebuild).\n\n";
+    echo "✔ Pembersihan tabel usang selesai.\n\n";
 
-    // Hidupkan kembali Foreign Key Checks
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
 
     // ====================================================================================
-    // [STRUKTUR TABEL 1]: CLASSES & VIOLATION CATEGORIES
+    // STRUKTUR TABEL
     // ====================================================================================
     $pdo->exec("CREATE TABLE `classes` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -50,9 +43,6 @@ try {
         `bobot_risiko` VARCHAR(20) NOT NULL
     ) ENGINE=InnoDB");
 
-    // ====================================================================================
-    // [STRUKTUR TABEL 2]: STAF SEKOLAH & ROLES SYSTEM
-    // ====================================================================================
     $pdo->exec("CREATE TABLE `staf_sekolah` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
         `nama` VARCHAR(150) NOT NULL,
@@ -76,9 +66,6 @@ try {
         FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON DELETE CASCADE
     ) ENGINE=InnoDB");
 
-    // ====================================================================================
-    // [STRUKTUR TABEL 3]: STUDENTS (CORE ENTITY)
-    // ====================================================================================
     $pdo->exec("CREATE TABLE `students` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
         `nisn` VARCHAR(20) NOT NULL UNIQUE,
@@ -92,9 +79,6 @@ try {
         FOREIGN KEY (`class_id`) REFERENCES `classes`(`id`) ON DELETE SET NULL
     ) ENGINE=InnoDB");
 
-    // ====================================================================================
-    // [STRUKTUR TABEL 4]: LOG KASUS, JURNAL, MANDAT, & RIWAYAT SP
-    // ====================================================================================
     $pdo->exec("CREATE TABLE `incidents` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
         `student_id` INT NOT NULL,
@@ -104,9 +88,9 @@ try {
         `lokasi_kejadian` VARCHAR(100) NULL,
         `tanggal_kejadian` DATE NULL,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+        FOREIGN KEY (`student_id`)  REFERENCES `students`(`id`)             ON DELETE CASCADE,
         FOREIGN KEY (`category_id`) REFERENCES `violation_categories`(`id`) ON DELETE CASCADE,
-        FOREIGN KEY (`user_id`) REFERENCES `staf_sekolah`(`id`) ON DELETE SET NULL
+        FOREIGN KEY (`user_id`)     REFERENCES `staf_sekolah`(`id`)         ON DELETE SET NULL
     ) ENGINE=InnoDB");
 
     $pdo->exec("CREATE TABLE `journals` (
@@ -118,8 +102,8 @@ try {
         `lokasi_kejadian` VARCHAR(100) NULL,
         `tanggal_kejadian` DATE NULL,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
-        FOREIGN KEY (`user_id`) REFERENCES `staf_sekolah`(`id`) ON DELETE CASCADE,
+        FOREIGN KEY (`student_id`)  REFERENCES `students`(`id`)             ON DELETE CASCADE,
+        FOREIGN KEY (`user_id`)     REFERENCES `staf_sekolah`(`id`)         ON DELETE CASCADE,
         FOREIGN KEY (`category_id`) REFERENCES `violation_categories`(`id`) ON DELETE CASCADE
     ) ENGINE=InnoDB");
 
@@ -130,10 +114,13 @@ try {
         `penanggung_jawab` INT NOT NULL,
         `status_tugas` VARCHAR(20) NOT NULL DEFAULT 'pending',
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+        `completed_at` TIMESTAMP NULL,
+        FOREIGN KEY (`student_id`)     REFERENCES `students`(`id`)     ON DELETE CASCADE,
         FOREIGN KEY (`penanggung_jawab`) REFERENCES `staf_sekolah`(`id`) ON DELETE CASCADE
     ) ENGINE=InnoDB");
 
+    // BUG FIX: Tabel sp_records kini termasuk 'alasan_sp' sebagai NOT NULL
+    // di INSERT sebelumnya tidak disertakan sehingga query gagal.
     $pdo->exec("CREATE TABLE `sp_records` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
         `student_id` INT NOT NULL,
@@ -142,99 +129,114 @@ try {
         `diterbitkan_oleh` INT NOT NULL,
         `is_approved` INT NOT NULL DEFAULT 0,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+        FOREIGN KEY (`student_id`)      REFERENCES `students`(`id`)     ON DELETE CASCADE,
         FOREIGN KEY (`diterbitkan_oleh`) REFERENCES `staf_sekolah`(`id`) ON DELETE CASCADE
     ) ENGINE=InnoDB");
 
-    echo "✔ Seluruh struktur tabel berhasil di-compile secara berjenjang.\n\n";
+    // BUG FIX: Tabel log_surat ditambahkan ke setup agar api/log_cetak.php bisa berjalan
+    $pdo->exec("CREATE TABLE `log_surat` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `student_id` INT NOT NULL,
+        `tipe_surat` VARCHAR(50) NOT NULL,
+        `tanggal_surat` DATE NULL,
+        `jam_surat` TIME NULL,
+        `dibuat_oleh` INT NOT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (`student_id`)  REFERENCES `students`(`id`)     ON DELETE CASCADE,
+        FOREIGN KEY (`dibuat_oleh`) REFERENCES `staf_sekolah`(`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB");
+
+    echo "✔ Seluruh struktur tabel berhasil di-compile.\n\n";
 
     // ====================================================================================
-    // DATA SEEDING (MENGISI DATA BERDASARKAN DUMP JSON KAMU)
+    // DATA SEEDING
     // ====================================================================================
     echo "----------------------------------------------------\n";
-    echo " ⚙️ MEMULAI PROSES IMPORT DATA AWAL (SEEDING)...\n";
+    echo " ⚙️ MEMULAI PROSES SEEDING...\n";
     echo "----------------------------------------------------\n";
 
-    // Seed Classes
     $classes = [
         ['5', 'X DKV 1'], ['4', 'XI BD 1'], ['1', 'XI DKV 1'], ['2', 'XI DKV 2'], ['3', 'XI DKV 3']
     ];
     $stmt = $pdo->prepare("INSERT INTO `classes` (id, nama_kelas) VALUES (?, ?)");
     foreach ($classes as $c) $stmt->execute($c);
 
-    // Seed Violation Categories
     $v_categories = [
         ['1', 'Terlambat masuk lingkungan sekolah', 'ringan'],
         ['2', 'Atribut seragam tidak lengkap atau menyimpang', 'ringan'],
         ['3', 'Membolos atau keluar kelas tanpa izin saat jam KBM', 'sedang'],
         ['4', 'Membawa atau bermain HP saat ujian tanpa instruksi', 'sedang'],
         ['5', 'Terlibat perkelahian atau tawuran pelajar', 'berat'],
-        ['6', 'Merusak aset atau fasilitas utama instansi sekolah', 'berat']
+        ['6', 'Merusak aset atau fasilitas utama instansi sekolah', 'berat'],
     ];
     $stmt = $pdo->prepare("INSERT INTO `violation_categories` (id, nama_kejadian, bobot_risiko) VALUES (?, ?, ?)");
     foreach ($v_categories as $vc) $stmt->execute($vc);
 
-    // Seed Staf Sekolah
+    // Password disimpan plain-text untuk kemudahan dev; gunakan password_hash di produksi
     $staf = [
-        ['1', 'Administrator Utama', 'super@smk.sch.id', 'admin', 'admin123', 'super_admin', '2026-05-22 18:31:34'],
-        ['2', 'Budi Santoso, M.Pd', 'budisbk', 'budi', 'budi', 'bk', '2026-05-22 20:30:13'],
-        ['3', 'guru', 'guru@smk.sch.id', 'guru', 'guru', 'guru', '2026-05-22 21:31:51']
+        ['1', 'Administrator Utama', 'super@smk.sch.id', 'admin',  'admin123', 'super_admin', '2026-05-22 18:31:34'],
+        ['2', 'Budi Santoso, M.Pd',  'budi@smk.sch.id',  'budi',   'budi',     'bk',          '2026-05-22 20:30:13'],
+        ['3', 'Guru Contoh',          'guru@smk.sch.id',  'guru',   'guru',     'guru',         '2026-05-22 21:31:51'],
     ];
     $stmt = $pdo->prepare("INSERT INTO `staf_sekolah` (id, nama, email, username, password, roles, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
     foreach ($staf as $s) $stmt->execute($s);
 
-    // Seed Roles
-    $roles = [['1', 'admin'], ['3', 'bk'], ['2', 'guru'], ['5', 'super_admin'], ['4', 'yayasan']];
-    $stmt = $pdo->prepare("INSERT INTO `roles` (id, nama_role) VALUES (?, ?)");
+    $roles = [['1', 'admin'], ['2', 'guru'], ['3', 'bk'], ['4', 'yayasan'], ['5', 'super_admin']];
+    $stmt  = $pdo->prepare("INSERT INTO `roles` (id, nama_role) VALUES (?, ?)");
     foreach ($roles as $r) $stmt->execute($r);
 
-    // Seed User Roles
     $u_roles = [['1', '1', '5'], ['2', '2', '3'], ['3', '3', '2']];
-    $stmt = $pdo->prepare("INSERT INTO `user_roles` (id, user_id, role_id) VALUES (?, ?, ?)");
+    $stmt    = $pdo->prepare("INSERT INTO `user_roles` (id, user_id, role_id) VALUES (?, ?, ?)");
     foreach ($u_roles as $ur) $stmt->execute($ur);
 
-    // Seed Students
     $students = [
         ['1', '202601', 'Bambang tole', '1', 'kuning', 'konseling', '0', '0', null],
-        ['2', '202602', 'Bambang Paas', '2', 'hijau', 'teguran', '0', '0', null],
-        ['3', '202603', 'Bambang Pamas', '3', 'merah', 'teguran', '1', '0', null],
-        ['4', '202670', 'adi', '1', 'hijau', 'teguran', '0', '0', null]
+        ['2', '202602', 'Bambang Paas', '2', 'hijau',  'teguran',   '0', '0', null],
+        ['3', '202603', 'Bambang Pamas','3', 'merah',  'teguran',   '1', '0', null],
+        ['4', '202670', 'Adi Pratama',  '1', 'hijau',  'teguran',   '0', '0', null],
     ];
     $stmt = $pdo->prepare("INSERT INTO `students` (id, nisn, nama, class_id, status_warna, level_eskalasi, status_sp, is_probation, probation_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
     foreach ($students as $st) $stmt->execute($st);
 
-    // Seed Incidents
     $incidents = [
         ['1', '3', '1', null, 'Terlambat', '2026-05-22 21:20:55'],
         ['2', '3', '5', null, 'Berkelahi', '2026-05-22 21:22:02'],
-        ['3', '2', '5', null, 'Tawuran', '2026-05-22 21:28:38'],
-        ['4', '4', '1', '3', 'Telat', '2026-05-22 22:00:48']
+        ['3', '2', '5', null, 'Tawuran',   '2026-05-22 21:28:38'],
+        ['4', '4', '1', '3',  'Telat',     '2026-05-22 22:00:48'],
     ];
     $stmt = $pdo->prepare("INSERT INTO `incidents` (id, student_id, category_id, user_id, catatan, created_at) VALUES (?, ?, ?, ?, ?, ?)");
     foreach ($incidents as $inc) $stmt->execute($inc);
 
-    // Seed Journals
     $journals = [
-        ['1', '1', '1', '1', 'Terlambar dikarenakan bangun siang', 'Lingkungan Sekolah', '2026-05-22', '2026-05-22 21:05:27'],
-        ['2', '1', '1', '2', 'Atribut tidak lengkap', 'Lingkungan Sekolah', '2026-05-22', '2026-05-22 21:16:28'],
-        ['3', '1', '1', '3', 'bolos', 'Lingkungan Sekolah', '2026-05-22', '2026-05-22 21:17:22']
+        ['1', '1', '1', '1', 'Terlambat dikarenakan bangun siang', 'Lingkungan Sekolah', '2026-05-22', '2026-05-22 21:05:27'],
+        ['2', '1', '1', '2', 'Atribut tidak lengkap',              'Lingkungan Sekolah', '2026-05-22', '2026-05-22 21:16:28'],
+        ['3', '1', '1', '3', 'Bolos',                              'Lingkungan Sekolah', '2026-05-22', '2026-05-22 21:17:22'],
     ];
     $stmt = $pdo->prepare("INSERT INTO `journals` (id, student_id, user_id, category_id, catatan, lokasi_kejadian, tanggal_kejadian, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
     foreach ($journals as $j) $stmt->execute($j);
 
-    // Seed SP Records
+    // BUG FIX: Seed sp_records sekarang menyertakan kolom 'alasan_sp'
     $sp_records = [
-        ['1', '3', '1', 'Diberikan penindakan disiplin bertahap Surat Peringatan Tingkat 1 karena akumulasi kasus kritis pada Zona Merah.', '1', '2026-05-22 22:37:20', '0']
+        ['1', '3', '1', 'Diberikan penindakan disiplin bertahap Surat Peringatan Tingkat 1 karena akumulasi kasus kritis pada Zona Merah.', '1', '2026-05-22 22:37:20', '0'],
     ];
     $stmt = $pdo->prepare("INSERT INTO `sp_records` (id, student_id, tingkat_sp, alasan_sp, diterbitkan_oleh, created_at, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?)");
     foreach ($sp_records as $sp) $stmt->execute($sp);
 
-    echo "✔ Proses Seeding 100% Selesai. Data sinkron dengan tangkapan layar UI!\n\n";
+    // Simpan kredensial DB ke file konfigurasi
+    $credentials = json_encode([
+        'host'     => $host,
+        'username' => $user,
+        'password' => $pass,
+        'db_name'  => $dbname,
+    ], JSON_PRETTY_PRINT);
+    file_put_contents(__DIR__ . '/../config/db_credentials.json', $credentials);
+
+    echo "✔ Proses Seeding 100% Selesai.\n\n";
     echo "====================================================\n";
-    echo " 🎉 SYSTEM IS READY FOR PRODUCTION!\n";
-    echo " Silakan hapus file setup.php ini demi keamanan.\n";
+    echo " 🎉 SYSTEM IS READY! Hapus file setup.php ini.\n";
     echo "====================================================\n";
 
 } catch (PDOException $e) {
     echo "\n❌ [FATAL ERROR]: " . $e->getMessage() . "\n";
 }
+?>
