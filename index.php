@@ -2,7 +2,6 @@
 // ====================================================================================
 // [BLOCK 1: PHP CORE INITIALIZATION & DATABASE QUERIES] - SINERGICARE V3.0.0
 // ====================================================================================
-// ARSITEKTUR v3.0.0: Jalur konfigurasi database dialihkan ke folder config/
 require_once 'config/config.php';
 
 // Pastikan session sudah berjalan
@@ -24,6 +23,9 @@ $user_roles    = $_SESSION['user_roles'] ?? [];
 if (!is_array($user_roles)) {
     $user_roles = [$user_roles];
 }
+
+// Global variable untuk mendeteksi Super Admin (Bisa digunakan di file module/views)
+$is_super_admin = in_array('super_admin', $user_roles);
 
 // --- [QUERY A: STATISTIK WARNA RADAR] ---
 $count_hijau = 0; $count_kuning = 0; $count_merah = 0;
@@ -82,7 +84,7 @@ if (isset($conn) && $conn !== null) {
     }
 }
 
-// --- [PERBAIKAN QUERY F v3.0.0: PENYARINGAN SEGMENTASI LOG KASUS BERDASARKAN ROLE] ---
+// --- [QUERY F: LOG KASUS] ---
 $log_jurnal_terkini = [];
 if (isset($conn) && $conn !== null) {
     try {
@@ -116,7 +118,7 @@ if (isset($conn) && $conn !== null) {
     }
 }
 
-// --- [QUERY G: ANALITIK EXCLUSIVE WAKA - PETA KERAWANAN KELAS] ---
+// --- [QUERY G: PETA KERAWANAN KELAS] ---
 $peta_kerawanan_kelas = [];
 if (isset($conn) && $conn !== null) {
     $q_rawan = $conn->query("SELECT c.nama_kelas, COUNT(i.id) as total_cases 
@@ -131,7 +133,7 @@ if (isset($conn) && $conn !== null) {
     }
 }
 
-// --- [QUERY H: TREN PELANGGARAN UTAMA BULAN INI] ---
+// --- [QUERY H: TREN PELANGGARAN BULAN INI] ---
 $tren_pelanggaran = [];
 if (isset($conn) && $conn !== null) {
     $q_tren = $conn->query("SELECT vc.nama_kejadian, COUNT(i.id) as jumlah 
@@ -148,7 +150,6 @@ if (isset($conn) && $conn !== null) {
 ?>
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -235,12 +236,13 @@ if (isset($conn) && $conn !== null) {
                     <?php endif; ?>
                 </div>
 
+                <!-- PERUBAHAN MODULAR: Menu Admin Panel kini menggunakan fungsi switchMenu -->
                 <?php if (count(array_intersect(['admin', 'super_admin'], $user_roles)) > 0): ?>
                 <div class="space-y-1">
                     <span class="text-[9px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase px-3 block mb-1">Pengaturan</span>
-                    <a href="admin_panel.php" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left">
-                        🔧 Admin Panel
-                    </a>
+                    <button id="btn_nav_section_admin" onclick="switchMenu('section_admin')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition text-left target-menu-btn">
+                        🔧 Panel Administrator
+                    </button>
                 </div>
                 <?php endif; ?>
             </nav>
@@ -288,6 +290,8 @@ if (isset($conn) && $conn !== null) {
         <?php endif; ?>
 
         <div class="flex-1 flex flex-col gap-4">
+            
+            <!-- SECTION DASHBOARD -->
             <div id="section_dashboard" class="grid grid-cols-1 xl:grid-cols-3 gap-4 target-content-section">
                 <div class="xl:col-span-2 space-y-4">
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -354,6 +358,7 @@ if (isset($conn) && $conn !== null) {
                 </div>
             </div>
 
+            <!-- SECTION JURNAL -->
             <div id="section_jurnal" class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-4">
                 <?php if (count(array_intersect(['guru', 'admin', 'super_admin'], $user_roles)) > 0): ?>
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border dark:border-slate-700">
@@ -457,6 +462,7 @@ if (isset($conn) && $conn !== null) {
                 </div>
             </div>
 
+            <!-- SECTION MANDAT -->
             <?php if (count(array_intersect(['guru', 'super_admin', 'admin'], $user_roles)) > 0): ?>
             <div id="section_mandat" class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-3">
                 <?php
@@ -485,6 +491,8 @@ if (isset($conn) && $conn !== null) {
             </div>
             <?php endif; ?>
 
+            <!-- SECTION RADAR BK -->
+            <?php if (count(array_intersect(['bk', 'admin', 'super_admin', 'kepala_sekolah', 'waka_kesiswaan', 'kepala_jurusan', 'yayasan'], $user_roles)) > 0): ?>
             <div id="section_radar_bk" class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-4">
                 <h3 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">🎯 Monitoring Radar Urgent BK</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -507,7 +515,9 @@ if (isset($conn) && $conn !== null) {
                     ?>
                 </div>
             </div>
+            <?php endif; ?>
 
+            <!-- SECTION CETAK BK -->
             <?php if (count(array_intersect(['bk', 'admin', 'super_admin'], $user_roles)) > 0): ?>
             <div id="section_cetak_bk" class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-4">
                 <div class="border-b pb-2 border-slate-100 dark:border-slate-800">
@@ -559,6 +569,7 @@ if (isset($conn) && $conn !== null) {
             </div>
             <?php endif; ?>
 
+            <!-- SECTION KAJUR -->
             <?php if (count(array_intersect(['kepala_jurusan', 'admin', 'super_admin'], $user_roles)) > 0): ?>
             <div id="section_kajur" class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-4">
                 <div class="border-b pb-2">
@@ -602,6 +613,7 @@ if (isset($conn) && $conn !== null) {
             </div>
             <?php endif; ?>
 
+            <!-- SECTION WAKA -->
             <?php if (count(array_intersect(['waka_kesiswaan', 'admin', 'super_admin'], $user_roles)) > 0): ?>
             <div id="section_waka" class="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-200/60 dark:border-slate-800 shadow-sm target-content-section hidden space-y-6">
                 <div>
@@ -716,9 +728,21 @@ if (isset($conn) && $conn !== null) {
                 </div>
             </div>
             <?php endif; ?>
+
+            <!-- PERUBAHAN MODULAR: SECTION ADMIN -->
+            <?php if (count(array_intersect(['admin', 'super_admin'], $user_roles)) > 0): ?>
+            <div id="section_admin" class="target-content-section hidden space-y-6">
+                <?php 
+                // Mengambil kerangka halaman khusus admin agar index.php tidak membengkak
+                include 'views/admin_panel_content.php'; 
+                ?>
+            </div>
+            <?php endif; ?>
+
         </div>
     </main>
 
+    <!-- MODAL EDIT MASTER (Jika form master ada di dalam views, biarkan modal ini disini karena dipanggil via body) -->
     <div id="modal_edit_master" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end sm:items-center justify-center hidden z-50 p-2 sm:p-4">
         <div class="bg-white dark:bg-slate-900 rounded-t-[2rem] sm:rounded-[2rem] shadow-xl max-w-md w-full overflow-hidden border">
             <div class="p-5 border-b bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
@@ -759,6 +783,7 @@ if (isset($conn) && $conn !== null) {
         </div>
     </div>
 
+    <!-- MODAL CATAT JURNAL -->
     <div id="modal_catat" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end sm:items-center justify-center hidden z-50 p-2 sm:p-4">
         <div class="bg-white dark:bg-slate-900 rounded-t-[2rem] sm:rounded-[2rem] shadow-xl max-w-md w-full overflow-hidden border">
             <div class="p-5 border-b bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
@@ -794,6 +819,7 @@ if (isset($conn) && $conn !== null) {
         </div>
     </div>
 
+    <!-- MODAL SIDANG BK / RIWAYAT -->
     <div id="modal_bk" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end sm:items-center justify-center hidden z-50 p-2 sm:p-4">
         <div class="bg-white dark:bg-slate-900 rounded-t-[2rem] sm:rounded-[2rem] shadow-xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] border">
             <div class="p-4 border-b bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center shrink-0">
@@ -858,6 +884,7 @@ if (isset($conn) && $conn !== null) {
         </div>
     </div>
 
+    <!-- MODAL EDIT JURNAL -->
     <div id="modal_edit_jurnal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end sm:items-center justify-center hidden z-50 p-2 sm:p-4">
         <div class="bg-white dark:bg-slate-900 rounded-t-[2rem] sm:rounded-[2rem] shadow-xl max-w-md w-full overflow-hidden border">
             <div class="p-5 border-b bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
@@ -880,6 +907,7 @@ if (isset($conn) && $conn !== null) {
         </div>
     </div>
 
+    <!-- MAIN JAVASCRIPT -->
     <script>
     const userBisaLihatRiwayat = <?php echo count(array_intersect(['bk', 'admin', 'super_admin'], $user_roles)) > 0 ? 'true' : 'false'; ?>;
     let chartInstanceGlobal = null;
@@ -898,6 +926,45 @@ if (isset($conn) && $conn !== null) {
                 chartInstanceGlobal.update();
             }
         }
+    }
+
+    // MODULAR CHANGE: Added section_admin title map
+    function switchMenu(targetSectionId) {
+        const targetNode = document.getElementById(targetSectionId);
+        if (!targetNode) return;
+
+        document.querySelectorAll('.target-content-section').forEach(sc => sc.classList.add('hidden'));
+        targetNode.classList.remove('hidden');
+
+        document.querySelectorAll('.target-menu-btn').forEach(btn => {
+            btn.classList.remove('bg-slate-900', 'dark:bg-white', 'text-white', 'dark:text-slate-900', 'font-bold');
+            btn.classList.add('text-slate-500', 'dark:text-slate-400', 'font-semibold');
+        });
+
+        const activeSidebarButton = document.getElementById('btn_nav_' + targetSectionId);
+        if (activeSidebarButton) {
+            activeSidebarButton.classList.add('bg-slate-900', 'dark:bg-white', 'text-white', 'dark:text-slate-900', 'font-bold');
+        }
+
+        const headerTitles = {
+            'section_dashboard': 'Dashboard Overview',
+            'section_jurnal': 'Buku Jurnal Insiden Harian',
+            'section_mandat': 'Mandat Pengawasan Lapangan',
+            'section_radar_bk': 'Radar Urgent BK',
+            'section_cetak_bk': 'Pusat Administrasi & Cetak Surat BK',
+            'section_kajur': 'Dashboard Kepala Jurusan',
+            'section_waka': 'Otoritas Validasi Waka Kesiswaan',
+            'section_admin': '🔧 Panel Administrator SinergiCare'
+        };
+        document.getElementById('page_title').innerText = headerTitles[targetSectionId] || 'SinergiCare';
+        if (window.innerWidth < 1024 && document.getElementById('sidebar_links')) {
+            document.getElementById('sidebar_links').classList.add('hidden');
+        }
+    }
+
+    function toggleMobileSidebar() {
+        const sidebar = document.getElementById('sidebar_links');
+        if (sidebar) sidebar.classList.toggle('hidden');
     }
 
     function bukaModalEdit(tipe, id, nama, p1 = '', p2 = '', p3 = '') {
@@ -920,7 +987,6 @@ if (isset($conn) && $conn !== null) {
         extraField.classList.add('hidden');
         if (guruFields) guruFields.classList.add('hidden');
 
-        // v3.0.0 Architecture Paths
         if (tipe === 'kelas') {
             title.innerText = '⚙️ Edit Struktur Kelas';
             label.innerText = 'Nama Kelas Baru';
@@ -945,44 +1011,6 @@ if (isset($conn) && $conn !== null) {
 
     function closeModalEditMaster() {
         if (document.getElementById('modal_edit_master')) document.getElementById('modal_edit_master').classList.add('hidden');
-    }
-
-    function switchMenu(targetSectionId) {
-        const targetNode = document.getElementById(targetSectionId);
-        if (!targetNode) return;
-
-        document.querySelectorAll('.target-content-section').forEach(sc => sc.classList.add('hidden'));
-        targetNode.classList.remove('hidden');
-
-        document.querySelectorAll('.target-menu-btn').forEach(btn => {
-            btn.classList.remove('bg-slate-900', 'dark:bg-white', 'text-white', 'dark:text-slate-900', 'font-bold');
-            btn.classList.add('text-slate-500', 'dark:text-slate-400', 'font-semibold');
-        });
-
-        const activeSidebarButton = document.getElementById('btn_nav_' + targetSectionId);
-        if (activeSidebarButton) {
-            activeSidebarButton.classList.add('bg-slate-900', 'dark:bg-white', 'text-white', 'dark:text-slate-900', 'font-bold');
-        }
-
-        const headerTitles = {
-            'section_dashboard': 'Dashboard Overview',
-            'section_jurnal': 'Buku Jurnal Insiden Harian',
-            'section_mandat': 'Mandat Pengawasan Lapangan',
-            'section_master_data': 'Manajemen Master Data Sekolah',
-            'section_radar_bk': 'Radar Urgent BK',
-            'section_cetak_bk': 'Pusat Administrasi & Cetak Surat BK',
-            'section_kajur': 'Dashboard Kepala Jurusan',
-            'section_waka': 'Otoritas Validasi Waka Kesiswaan'
-        };
-        document.getElementById('page_title').innerText = headerTitles[targetSectionId] || 'SinergiCare';
-        if (window.innerWidth < 1024 && document.getElementById('sidebar_links')) {
-            document.getElementById('sidebar_links').classList.add('hidden');
-        }
-    }
-
-    function toggleMobileSidebar() {
-        const sidebar = document.getElementById('sidebar_links');
-        if (sidebar) sidebar.classList.toggle('hidden');
     }
 
     const tingkat = document.getElementById('filter_tingkat');
@@ -1029,7 +1057,6 @@ if (isset($conn) && $conn !== null) {
 
     function ConnetionEngineRun() {
         if (!bodyTabelSiswa) return;
-        // v3.0.0 Architecture Paths: Masuk folder api/
         fetch('api/get_siswa.php')
             .then(response => response.json())
             .then(data => {
@@ -1165,7 +1192,6 @@ if (isset($conn) && $conn !== null) {
         riwayatBox.innerHTML = '<p class="text-[11px] text-slate-400 font-medium p-2">Menarik data kasus...</p>';
         modalBK.classList.remove('hidden');
 
-        // v3.0.0 Architecture Paths: Masuk folder api/
         fetch(`api/get_riwayat.php?student_id=${id}&t=${Date.now()}`).then(res => res.json()).then(data => {
             riwayatBox.innerHTML = '';
             if (data.length > 0) {
@@ -1190,7 +1216,6 @@ if (isset($conn) && $conn !== null) {
 
     function aksiCetak() {
         const sid = document.getElementById('bk_student_id').value;
-        // v3.0.0 Architecture Paths: Cetak riwayat dialihkan ke folder prints/
         if (sid) window.open(`prints/cetak_riwayat.php?student_id=${sid}`, '_blank');
     }
 
@@ -1205,7 +1230,6 @@ if (isset($conn) && $conn !== null) {
         }
         if (studentId) {
             kirimLogCetakKeDatabase(studentId, tipeSurat, tanggal, jam);
-            // v3.0.0 Architecture Paths: Berkas dialihkan ke folder prints/
             window.open(`prints/cetak_administrasi.php?tipe=${tipeSurat}&student_id=${studentId}&tanggal=${tanggal}&jam=${jam}`, '_blank');
             closeModalBK();
         }
@@ -1226,7 +1250,6 @@ if (isset($conn) && $conn !== null) {
             return;
         }
         kirimLogCetakKeDatabase(studentId, tipeSurat, tanggal, jam);
-        // v3.0.0 Architecture Paths: Berkas dialihkan ke folder prints/
         window.open(`prints/cetak_administrasi.php?tipe=${tipeSurat}&student_id=${studentId}&tanggal=${tanggal}&jam=${jam}`, '_blank');
     }
 
@@ -1284,10 +1307,8 @@ if (isset($conn) && $conn !== null) {
         formData.append('tipe_surat', tipe);
         formData.append('tanggal', tgl);
         formData.append('jam', jam);
-        // v3.0.0 Architecture Paths: Log Cetak masuk folder api/
         fetch('api/log_cetak.php', { method: 'POST', body: formData }).catch(err => console.error(err));
     }
     </script>
 </body>
-
 </html>
